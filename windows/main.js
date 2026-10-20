@@ -1,5 +1,6 @@
 const { app, BrowserWindow, session, powerSaveBlocker, ipcMain } = require('electron');
 const path = require('path');
+const RPC = require('discord-rpc');
 
 app.setPath('userData', path.join(app.getPath('appData'), 'PokeBonk'));
 
@@ -21,6 +22,43 @@ app.commandLine.appendSwitch('high-dpi-support', '1');
 let mainWindow = null;
 let sleepBlockerId = null;
 
+// --- Discord Rich Presence Integration ---
+const DISCORD_CLIENT_ID = '123456789012345678'; // Replace with your Discord Developer Portal App ID if desired
+const rpc = new RPC.Client({ transport: 'ipc' });
+let rpcConnected = false;
+
+function setupDiscordRPC() {
+    rpc.on('ready', () => {
+        rpcConnected = true;
+        updateDiscordPresence({ details: 'In Menu / Title Screen', state: 'Choosing Pokémon' });
+    });
+
+    rpc.login({ clientId: DISCORD_CLIENT_ID }).catch(() => {
+        rpcConnected = false; // Gracefully fails if Discord desktop app isn't running
+    });
+}
+
+function updateDiscordPresence(activityData) {
+    if (!rpcConnected || !mainWindow) return;
+    try {
+        rpc.setActivity({
+            details: activityData.details || 'Playing PokéBonk',
+            state: activityData.state || 'In a Run',
+            largeImageKey: 'pokebonk_icon', // Make sure to upload an asset with this key in your Discord App dashboard, or fallback will use app name
+            largeImageText: 'PokéBonk',
+            startTimestamp: activityData.resetTimer ? Date.now() : undefined,
+            instance: false
+        }).catch(() => {});
+    } catch (e) {
+        rpcConnected = false;
+    }
+}
+
+ipcMain.on('update-rpc', (event, data) => {
+    updateDiscordPresence(data);
+});
+// ----------------------------------------
+
 function createWindow() {
     sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
 
@@ -28,7 +66,7 @@ function createWindow() {
         width: 1920,
         height: 1080,
         fullscreen: true,
-        frame: false,
+        frame: false, // Frameless for immersive clean look, custom close button added in preload
         autoHideMenuBar: true,
         backgroundColor: '#000000',
         title: 'PokéBonk',
@@ -71,6 +109,7 @@ function createWindow() {
     });
 
     mainWindow.loadURL('https://pokebonk.com');
+    setupDiscordRPC();
 }
 
 ipcMain.on('quit-app', () => {
@@ -89,6 +128,9 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
     if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
         powerSaveBlocker.stop(sleepBlockerId);
+    }
+    if (rpcConnected) {
+        rpc.destroy().catch(() => {});
     }
     session.defaultSession.cookies.flushStore().finally(() => {
         app.quit();
