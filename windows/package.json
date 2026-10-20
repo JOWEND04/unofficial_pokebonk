@@ -1,7 +1,7 @@
 {
   "name": "pokebonk-windows",
-  "version": "1.4.1",
-  "description": "PokéBonk Fullscreen Desktop Client with Discord RPC & Native Controls",
+  "version": "2.0.0",
+  "description": "PokéBonk Production Desktop Client",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
