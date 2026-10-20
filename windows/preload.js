@@ -1,12 +1,21 @@
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
-    // 1. Inject UI Styles & Prevent any browser zoom distortion on the WebGL canvas
+    // 1. Inject robust letterboxing & aspect-ratio enforcement styles
     const style = document.createElement('style');
     style.innerHTML = `
         * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; touch-action: none; }
-        html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; zoom: 1 !important; }
-        canvas { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: contain !important; }
+        html, body { 
+            margin: 0 !important; padding: 0 !important; 
+            width: 100vw !important; height: 100vh !important; 
+            overflow: hidden !important; background: #000 !important; 
+            display: flex !important; align-items: center !important; justify-content: center !important;
+        }
+        canvas { 
+            width: 100vw !important; height: 100vh !important; 
+            max-width: 100vw !important; max-height: 100vh !important;
+            object-fit: contain !important; margin: auto !important; position: absolute !important;
+        }
         body.controller-active, body.controller-active * { cursor: none !important; }
         
         #pb-desktop-header {
@@ -39,19 +48,21 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(style);
 
-    // Lock scale factor
+    // Prevent zoom distortion
     window.addEventListener('wheel', (e) => {
         if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
 
-    setTimeout(() => {
+    // Dynamic Resize Observer to keep canvas container proportional
+    const observer = new ResizeObserver(() => {
         window.dispatchEvent(new Event('resize'));
-    }, 150);
+    });
+    observer.observe(document.body);
 
     const header = document.createElement('div');
     header.id = 'pb-desktop-header';
     header.innerHTML = `
-        <div class="pb-win-btn" id="pb-min-btn" title="Toggle Windowed">🗕</div>
+        <div class="pb-win-btn" id="pb-min-btn" title="Minimize">🗕</div>
         <div class="pb-win-btn" id="pb-close-btn" title="Close App">✕</div>
     `;
     document.body.appendChild(header);
@@ -63,7 +74,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('pb-min-btn').addEventListener('click', (e) => {
         e.stopImmediatePropagation();
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', code: 'F11', keyCode: 122, bubbles: true }));
+        ipcRenderer.send('minimize-app');
     });
 
     const toast = document.createElement('div');
@@ -179,7 +190,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
                 const b2 = mappedButtons[2];
                 mappedButtons[2] = mappedButtons[3];
-                mappedButtons[3] / b2;
+                mappedButtons[3] = b2;
             }
 
             const mappedAxes = pad.axes ? pad.axes.map(cleanAxis) : [];
