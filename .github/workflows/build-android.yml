@@ -8,6 +8,10 @@ on:
       - '.github/workflows/build-android.yml'
   workflow_dispatch:
 
+# Grants GitHub Actions permission to create and update GitHub Releases
+permissions:
+  contents: write
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -35,8 +39,19 @@ jobs:
         working-directory: ./android
         run: gradle assembleRelease --stacktrace
 
-      - name: Upload Compiled APK
-        uses: actions/upload-artifact@v4
+      - name: Rename APK for Clean Download
+        run: cp android/app/build/outputs/apk/release/app-release.apk PokeBonk.apk
+
+      - name: Publish Raw APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: PokeBonk-Android-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          tag_name: latest
+          name: "PokéBonk Latest Build"
+          body: |
+            ### Direct Android Installation
+            Tap **`PokeBonk.apk`** under **Assets** below to download and install directly on your Android device (no `.zip` extraction required).
+            
+            * **Last Built:** Commit `${{ github.sha }}`
+          files: PokeBonk.apk
+          prerelease: false
+          make_latest: true
