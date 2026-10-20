@@ -13,7 +13,8 @@
     "compression": "store",
     "npmRebuild": false,
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "build/icon.ico"
     },
     "portable": {
       "artifactName": "PokeBonk-Windows.exe"
