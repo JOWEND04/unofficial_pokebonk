@@ -7,10 +7,6 @@
     "start": "electron .",
     "dist": "npx electron-builder --win portable"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/YOUR-GITHUB-USERNAME/YOUR-REPO-NAME.git"
-  },
   "build": {
     "appId": "com.unofficial.pokebonk",
     "productName": "PokeBonk",
@@ -22,11 +18,6 @@
     },
     "portable": {
       "artifactName": "PokeBonk-Windows.exe"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "YOUR-GITHUB-USERNAME",
-      "repo": "YOUR-REPO-NAME"
     }
   },
   "devDependencies": {
