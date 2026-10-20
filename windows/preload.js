@@ -1,14 +1,34 @@
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
+    // 1. Inject Fullscreen Styles + Custom Minimalist Close/Minimize Header in Top Right
     const style = document.createElement('style');
     style.innerHTML = `
         * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; }
         html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; }
         canvas { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
         body.controller-active, body.controller-active * { cursor: none !important; }
+        
+        #pb-desktop-header {
+            position: fixed; top: 0; right: 0; z-index: 999998;
+            display: flex; gap: 8px; padding: 12px 16px;
+            opacity: 0; transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        body:not(.controller-active) #pb-desktop-header {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .pb-win-btn {
+            background: rgba(20, 22, 34, 0.85); color: #FFF; border: 1px solid rgba(255,215,0,0.4);
+            width: 32px; height: 32px; border-radius: 6px; font-weight: bold; font-size: 14px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .pb-win-btn:hover { background: rgba(230, 21, 21, 0.9); border-color: #FFD700; }
+
         #pb-controller-toast {
-            position: fixed; top: 18px; right: 18px; z-index: 999999;
+            position: fixed; top: 18px; right: 70px; z-index: 999999;
             background: rgba(18, 20, 32, 0.92); color: #FFD700; border: 1.5px solid #FFD700;
             padding: 10px 16px; border-radius: 8px; font-family: system-ui, sans-serif;
             font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.6);
@@ -16,6 +36,24 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     `;
     document.head.appendChild(style);
+
+    // Create custom window controls header
+    const header = document.createElement('div');
+    header.id = 'pb-desktop-header';
+    header.innerHTML = `
+        <div class="pb-win-btn" id="pb-min-btn" title="Minimize / Windowed">🗕</div>
+        <div class="pb-win-btn" id="pb-close-btn" title="Close App">✕</div>
+    `;
+    document.body.appendChild(header);
+
+    document.getElementById('pb-close-btn').addEventListener('click', () => {
+        ipcRenderer.send('quit-app');
+    });
+
+    document.getElementById('pb-min-btn').addEventListener('click', () => {
+        // Toggle windowed mode via F11 simulation or similar
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', code: 'F11', keyCode: 122, bubbles: true }));
+    });
 
     const toast = document.createElement('div');
     toast.id = 'pb-controller-toast';
@@ -33,6 +71,33 @@ window.addEventListener('DOMContentLoaded', () => {
         document.body.classList.remove('controller-active');
     });
 
+    // 2. Discord RPC State Scraper Loop
+    let lastSentDetails = '';
+    setInterval(() => {
+        try {
+            // Scrape game stats from DOM elements if available, otherwise report general run status
+            const scoreElem = document.querySelector('.score, [class*="score"], [class*="run-stats"]');
+            const bossElem = document.querySelector('.boss-name, [class*="boss"]');
+            
+            let details = 'Exploring Map';
+            let state = 'In Active Run';
+
+            if (bossElem && bossElem.textContent) {
+                details = `Fighting Boss: ${bossElem.textContent.trim()}`;
+            } else if (scoreElem && scoreElem.textContent) {
+                details = `Run Score: ${scoreElem.textContent.trim()}`;
+            }
+
+            if (details !== lastSentDetails) {
+                lastSentDetails = details;
+                ipcRenderer.send('update-rpc', { details, state, resetTimer: true });
+            }
+        } catch (e) {
+            // Non-blocking fallback
+        }
+    }, 5000);
+
+    // 3. Controller Support & Mapping Handlers
     let swapABXY = localStorage.getItem('pb_swap_abxy') === 'true';
 
     function isNintendoDevice(idString) {
@@ -58,10 +123,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const name = nintendo ? 'Nintendo / Switch Mode Controller' : 'Xbox / XInput Controller';
         const modeText = swapABXY ? 'Swapped AB/XY' : 'Standard Positional';
         showToast(`🎮 ${name} Connected [${modeText}] — Press F9 to swap A/B, Hold Start+Select to Quit`, 4500);
-    });
-
-    window.addEventListener('gamepaddisconnected', () => {
-        showToast('🎮 Controller Disconnected');
     });
 
     const DEADZONE = 0.08;
