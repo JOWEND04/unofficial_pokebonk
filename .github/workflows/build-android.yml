@@ -6,14 +6,11 @@ on:
     paths:
       - 'android/**'
       - '.github/workflows/build-android.yml'
-  workflow_dispatch: # Still lets you trigger a build manually anytime
+  workflow_dispatch:
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./android
 
     steps:
       - name: Checkout Code
@@ -25,16 +22,21 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
+          build-root-directory: android
 
       - name: Build Optimized Release APK
-        run: gradle assembleRelease
+        working-directory: ./android
+        run: gradle assembleRelease --stacktrace
 
       - name: Upload Compiled APK
         uses: actions/upload-artifact@v4
         with:
           name: PokeBonk-Android-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/*.apk
