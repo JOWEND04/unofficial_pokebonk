@@ -1,12 +1,12 @@
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
-    // 1. Inject UI Styles with absolute top-layer z-index so clicks never miss
+    // 1. Inject UI Styles & Prevent any browser zoom distortion on the WebGL canvas
     const style = document.createElement('style');
     style.innerHTML = `
-        * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; }
-        html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; }
-        canvas { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
+        * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; touch-action: none; }
+        html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; zoom: 1 !important; }
+        canvas { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: contain !important; }
         body.controller-active, body.controller-active * { cursor: none !important; }
         
         #pb-desktop-header {
@@ -39,12 +39,15 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(style);
 
-    // Force viewport layout normalization to fix oversized map/canvas bugs
+    // Lock scale factor
+    window.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+
     setTimeout(() => {
         window.dispatchEvent(new Event('resize'));
     }, 150);
 
-    // Create reliable header controls
     const header = document.createElement('div');
     header.id = 'pb-desktop-header';
     header.innerHTML = `
@@ -102,7 +105,7 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
     }, 6000);
 
-    // Controller input handling & F9 layout toggle
+    // Controller input mapping
     let swapABXY = localStorage.getItem('pb_swap_abxy') === 'true';
 
     function isNintendoDevice(idString) {
@@ -176,7 +179,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
                 const b2 = mappedButtons[2];
                 mappedButtons[2] = mappedButtons[3];
-                mappedButtons[3] = b2;
+                mappedButtons[3] / b2;
             }
 
             const mappedAxes = pad.axes ? pad.axes.map(cleanAxis) : [];
