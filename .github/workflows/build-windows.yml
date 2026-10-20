@@ -1,0 +1,50 @@
+name: Build PokeBonk Windows EXE
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies & Build Fast Portable EXE
+        working-directory: ./windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          npm install
+          npm run dist
+
+      - name: Publish Raw EXE to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "PokéBonk Latest Build"
+          body: |
+            ### Direct Downloads (Android & Windows)
+            Download the latest standalone fullscreen builds under **Assets** below:
+            * **Android (`PokeBonk.apk`):** Fullscreen landscape + Bluetooth controller support
+            * **Windows (`PokeBonk-Windows.exe`):** Fast-launch portable fullscreen app with native Xbox (`XInput`) & Nintendo/8BitDo (`Switch HID`) support
+              * **`F9`:** Swap `A/B` & `X/Y` button layout
+              * **`F11` / `Alt+Enter`:** Toggle Fullscreen / Windowed
+              * **`Hold Start + Select (1.5s)`:** Quit game from controller
+          files: windows/dist/PokeBonk-Windows.exe
+          prerelease: false
+          make_latest: true
