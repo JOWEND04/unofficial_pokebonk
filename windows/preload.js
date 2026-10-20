@@ -5,16 +5,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const style = document.createElement('style');
     style.innerHTML = `
         * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; touch-action: none; }
-        html, body { 
-            margin: 0 !important; padding: 0 !important; 
-            width: 100vw !important; height: 100vh !important; 
-            overflow: hidden !important; background: #000 !important; 
-            display: flex !important; align-items: center !important; justify-content: center !important;
+        html, body {
+            margin: 0 !important; padding: 0 !important;
+            width: 100vw !important; height: 100vh !important;
+            overflow: hidden !important; background: #000 !important;
         }
-        canvas { 
-            width: 100vw !important; height: 100vh !important; 
-            max-width: 100vw !important; max-height: 100vh !important;
-            object-fit: contain !important; margin: auto !important; position: absolute !important;
+        canvas#game {
+            width: 100vw !important; height: 100vh !important;
+            display: block !important;
         }
         body.controller-active, body.controller-active * { cursor: none !important; }
         
