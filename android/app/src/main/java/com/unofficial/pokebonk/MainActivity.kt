@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
                         event.repeatCount,
                         event.metaState,
                         event.deviceId,
-                        event.scancode,
+                        event.scanCode,
                         event.flags,
                         InputDevice.SOURCE_GAMEPAD
                     )
