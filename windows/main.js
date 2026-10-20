@@ -9,10 +9,8 @@ if (!gotTheLock) {
     app.quit();
 }
 
-app.commandLine.appendSwitch(
-    'enable-features',
-    'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController'
-);
+// Performance & GPU acceleration flags
+app.commandLine.appendSwitch('enable-features', 'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -22,42 +20,45 @@ app.commandLine.appendSwitch('high-dpi-support', '1');
 let mainWindow = null;
 let sleepBlockerId = null;
 
-// --- Discord Rich Presence Integration ---
-const DISCORD_CLIENT_ID = '123456789012345678'; // Replace with your Discord Developer Portal App ID if desired
+// Discord RPC (Non-blocking lazy initialization)
+const DISCORD_CLIENT_ID = '123456789012345678';
 const rpc = new RPC.Client({ transport: 'ipc' });
 let rpcConnected = false;
 
-function setupDiscordRPC() {
-    rpc.on('ready', () => {
-        rpcConnected = true;
-        updateDiscordPresence({ details: 'In Menu / Title Screen', state: 'Choosing Pokémon' });
-    });
+function initDiscordRPC() {
+    setTimeout(() => {
+        rpc.on('ready', () => {
+            rpcConnected = true;
+            rpc.setActivity({
+                details: 'In Menu / Title Screen',
+                state: 'Choosing Pokémon',
+                largeImageKey: 'pokebonk_icon',
+                largeImageText: 'PokéBonk',
+                instance: false
+            }).catch(() => {});
+        });
 
-    rpc.login({ clientId: DISCORD_CLIENT_ID }).catch(() => {
-        rpcConnected = false; // Gracefully fails if Discord desktop app isn't running
-    });
+        rpc.login({ clientId: DISCORD_CLIENT_ID }).catch(() => {
+            rpcConnected = false;
+        });
+    }, 2500); // Wait 2.5s after launch so startup is instant
 }
 
-function updateDiscordPresence(activityData) {
-    if (!rpcConnected || !mainWindow) return;
+ipcMain.on('update-rpc', (event, data) => {
+    if (!rpcConnected) return;
     try {
         rpc.setActivity({
-            details: activityData.details || 'Playing PokéBonk',
-            state: activityData.state || 'In a Run',
-            largeImageKey: 'pokebonk_icon', // Make sure to upload an asset with this key in your Discord App dashboard, or fallback will use app name
+            details: data.details || 'Playing PokéBonk',
+            state: data.state || 'In a Run',
+            largeImageKey: 'pokebonk_icon',
             largeImageText: 'PokéBonk',
-            startTimestamp: activityData.resetTimer ? Date.now() : undefined,
+            startTimestamp: data.resetTimer ? Date.now() : undefined,
             instance: false
         }).catch(() => {});
     } catch (e) {
         rpcConnected = false;
     }
-}
-
-ipcMain.on('update-rpc', (event, data) => {
-    updateDiscordPresence(data);
 });
-// ----------------------------------------
 
 function createWindow() {
     sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
@@ -65,8 +66,10 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1920,
         height: 1080,
+        show: false, // Hide until fully ready to eliminate visual map-scaling flash
+        useContentSize: true,
         fullscreen: true,
-        frame: false, // Frameless for immersive clean look, custom close button added in preload
+        frame: false,
         autoHideMenuBar: true,
         backgroundColor: '#000000',
         title: 'PokéBonk',
@@ -81,6 +84,11 @@ function createWindow() {
 
     mainWindow.setMenuBarVisibility(false);
 
+    // Show window smoothly only when content finishes painting its correct viewport size
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+    });
+
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         const allowed = ['pokebonk', 'solais.cloud', 'google', 'discord'];
         if (allowed.some(domain => url.toLowerCase().includes(domain))) {
@@ -94,26 +102,22 @@ function createWindow() {
             if (input.key === 'F11' || (input.alt && input.key === 'Enter')) {
                 const isFull = mainWindow.isFullScreen();
                 mainWindow.setFullScreen(!isFull);
-                if (isFull) {
-                    mainWindow.setSize(1280, 720);
-                    mainWindow.center();
-                }
                 event.preventDefault();
             } else if (input.key === 'F5') {
                 mainWindow.reload();
                 event.preventDefault();
             } else if (input.alt && input.key === 'F4') {
-                app.quit();
+                app.exit(0);
             }
         }
     });
 
     mainWindow.loadURL('https://pokebonk.com');
-    setupDiscordRPC();
+    initDiscordRPC();
 }
 
 ipcMain.on('quit-app', () => {
-    app.quit();
+    app.exit(0); // Hard exit ensures zero lingering processes
 });
 
 app.on('second-instance', () => {
@@ -133,6 +137,6 @@ app.on('window-all-closed', () => {
         rpc.destroy().catch(() => {});
     }
     session.defaultSession.cookies.flushStore().finally(() => {
-        app.quit();
+        app.exit(0);
     });
 });
