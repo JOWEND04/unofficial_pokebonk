@@ -1,0 +1,22 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+*.apk
+*.aab
+
+# Future Windows App (Electron / Tauri / WebView2 / C#)
+node_modules/
+dist/
+out/
+target/
+bin/
+obj/
+*.exe
+*.msi
+
+# OS Files
+.DS_Store
+Thumbs.db
