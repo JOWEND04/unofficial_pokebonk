@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Black Border of Pokeball -->
+    <path
+        android:fillColor="#111111"
+        android:pathData="M54,54m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
+    <!-- Top Crimson Half -->
+    <path
+        android:fillColor="#EE1515"
+        android:pathData="M27,51 A27,27 0 0,1 81,51 Z" />
+    <!-- Bottom White Half -->
+    <path
+        android:fillColor="#F5F5F5"
+        android:pathData="M27,57 A27,27 0 0,0 81,57 Z" />
+    <!-- Center Dark Ring -->
+    <path
+        android:fillColor="#111111"
+        android:pathData="M54,54m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+    <!-- Center Gold 'Bonk' Button Core -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M54,54m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+</vector>
