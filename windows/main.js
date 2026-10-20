@@ -10,7 +10,6 @@ if (!gotTheLock) {
     app.quit();
 }
 
-// GPU & High-DPI scaling fixes to prevent oversized UI/maps
 app.commandLine.appendSwitch('enable-features', 'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('high-dpi-support', '1');
@@ -20,7 +19,6 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 let mainWindow = null;
 let sleepBlockerId = null;
 
-// Auto-Updater Configuration
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
@@ -37,7 +35,6 @@ autoUpdater.on('update-downloaded', () => {
     });
 });
 
-// Discord RPC Setup
 const DISCORD_CLIENT_ID = '123456789012345678';
 const rpc = new RPC.Client({ transport: 'ipc' });
 let rpcConnected = false;
@@ -91,7 +88,7 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: false,
             nodeIntegration: false,
-            zoomFactor: 1.0, // Force 1:1 pixel ratio
+            zoomFactor: 1.0,
             backgroundThrottling: false,
             spellcheck: false
         }
@@ -99,14 +96,8 @@ function createWindow() {
 
     mainWindow.setMenuBarVisibility(false);
 
-    // Disable pinch-to-zoom and wheel zoom scaling bugs
-    mainWindow.webContents.on('zoom-changed', (event, zoomDirection) => {
-        mainWindow.webContents.setZoomFactor(1.0);
-    });
-
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
-        // Check for updates 5 seconds after launch in background
         setTimeout(() => {
             autoUpdater.checkForUpdatesAndNotify().catch(() => {});
         }, 5000);
@@ -138,6 +129,10 @@ function createWindow() {
     mainWindow.loadURL('https://pokebonk.com');
     initDiscordRPC();
 }
+
+ipcMain.on('minimize-app', () => {
+    if (mainWindow) mainWindow.minimize();
+});
 
 ipcMain.on('quit-app', () => {
     app.exit(0);
