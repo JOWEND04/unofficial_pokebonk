@@ -1,0 +1,26 @@
+{
+  "name": "pokebonk-windows",
+  "version": "1.3.0",
+  "description": "PokéBonk Fullscreen Desktop Client with Xbox & Nintendo Controller Support",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.unofficial.pokebonk",
+    "productName": "PokeBonk",
+    "compression": "store",
+    "npmRebuild": false,
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "PokeBonk-Windows.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
