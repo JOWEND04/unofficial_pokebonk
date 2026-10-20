@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
-    // 1. Inject Fullscreen Styles + Custom Minimalist Close/Minimize Header in Top Right
+    // 1. Inject UI Styles with absolute top-layer z-index so clicks never miss
     const style = document.createElement('style');
     style.innerHTML = `
         * { user-select: none !important; -webkit-user-select: none !important; outline: none !important; }
@@ -10,7 +10,7 @@ window.addEventListener('DOMContentLoaded', () => {
         body.controller-active, body.controller-active * { cursor: none !important; }
         
         #pb-desktop-header {
-            position: fixed; top: 0; right: 0; z-index: 999998;
+            position: fixed; top: 0; right: 0; z-index: 2147483647;
             display: flex; gap: 8px; padding: 12px 16px;
             opacity: 0; transition: opacity 0.3s ease;
             pointer-events: none;
@@ -20,38 +20,46 @@ window.addEventListener('DOMContentLoaded', () => {
             pointer-events: auto;
         }
         .pb-win-btn {
-            background: rgba(20, 22, 34, 0.85); color: #FFF; border: 1px solid rgba(255,215,0,0.4);
-            width: 32px; height: 32px; border-radius: 6px; font-weight: bold; font-size: 14px;
+            background: rgba(20, 22, 34, 0.95); color: #FFF; border: 1.5px solid rgba(255,215,0,0.6);
+            width: 38px; height: 38px; border-radius: 8px; font-weight: bold; font-size: 16px;
             display: flex; align-items: center; justify-content: center; cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.8);
+            pointer-events: auto !important;
             transition: background 0.2s, border-color 0.2s;
         }
-        .pb-win-btn:hover { background: rgba(230, 21, 21, 0.9); border-color: #FFD700; }
+        .pb-win-btn:hover { background: rgba(230, 21, 21, 0.95); border-color: #FFD700; }
 
         #pb-controller-toast {
-            position: fixed; top: 18px; right: 70px; z-index: 999999;
-            background: rgba(18, 20, 32, 0.92); color: #FFD700; border: 1.5px solid #FFD700;
+            position: fixed; top: 18px; right: 95px; z-index: 2147483647;
+            background: rgba(18, 20, 32, 0.95); color: #FFD700; border: 1.5px solid #FFD700;
             padding: 10px 16px; border-radius: 8px; font-family: system-ui, sans-serif;
-            font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+            font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.7);
             pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
         }
     `;
     document.head.appendChild(style);
 
-    // Create custom window controls header
+    // Force viewport layout normalization to fix oversized map/canvas bugs
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 150);
+
+    // Create reliable header controls
     const header = document.createElement('div');
     header.id = 'pb-desktop-header';
     header.innerHTML = `
-        <div class="pb-win-btn" id="pb-min-btn" title="Minimize / Windowed">🗕</div>
+        <div class="pb-win-btn" id="pb-min-btn" title="Toggle Windowed">🗕</div>
         <div class="pb-win-btn" id="pb-close-btn" title="Close App">✕</div>
     `;
     document.body.appendChild(header);
 
-    document.getElementById('pb-close-btn').addEventListener('click', () => {
+    document.getElementById('pb-close-btn').addEventListener('click', (e) => {
+        e.stopImmediatePropagation();
         ipcRenderer.send('quit-app');
     });
 
-    document.getElementById('pb-min-btn').addEventListener('click', () => {
-        // Toggle windowed mode via F11 simulation or similar
+    document.getElementById('pb-min-btn').addEventListener('click', (e) => {
+        e.stopImmediatePropagation();
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', code: 'F11', keyCode: 122, bubbles: true }));
     });
 
@@ -71,11 +79,10 @@ window.addEventListener('DOMContentLoaded', () => {
         document.body.classList.remove('controller-active');
     });
 
-    // 2. Discord RPC State Scraper Loop
+    // Discord RPC updater loop
     let lastSentDetails = '';
     setInterval(() => {
         try {
-            // Scrape game stats from DOM elements if available, otherwise report general run status
             const scoreElem = document.querySelector('.score, [class*="score"], [class*="run-stats"]');
             const bossElem = document.querySelector('.boss-name, [class*="boss"]');
             
@@ -92,12 +99,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 lastSentDetails = details;
                 ipcRenderer.send('update-rpc', { details, state, resetTimer: true });
             }
-        } catch (e) {
-            // Non-blocking fallback
-        }
-    }, 5000);
+        } catch (e) {}
+    }, 6000);
 
-    // 3. Controller Support & Mapping Handlers
+    // Controller input handling & F9 layout toggle
     let swapABXY = localStorage.getItem('pb_swap_abxy') === 'true';
 
     function isNintendoDevice(idString) {
@@ -112,7 +117,7 @@ window.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('pb_swap_abxy', swapABXY);
             showToast(
                 swapABXY
-                    ? '🎮 Layout: AB/XY Swapped (Nintendo Printed Labels: East = A)'
+                    ? '🎮 Layout: AB/XY Swapped (Nintendo Labels: East = A)'
                     : '🎮 Layout: Standard Positional (South Button = Jump)'
             );
         }
