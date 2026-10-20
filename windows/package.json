@@ -1,7 +1,7 @@
 {
   "name": "pokebonk-windows",
-  "version": "2.1.0",
-  "description": "PokéBonk Desktop Client with Auto-Updater & Fixed Scaling",
+  "version": "2.3.0",
+  "description": "PokéBonk Production Desktop Client",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
