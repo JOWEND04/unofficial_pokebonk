@@ -1,4 +1,5 @@
 const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog, shell } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const RPC = require('discord-rpc');
@@ -267,7 +268,91 @@ autoUpdater.on('error', (error) => {
   }
 });
 
-autoUpdater.on('update-downloaded', () => {
+let downloadedUpdateFile = null;
+
+function applyUpdateAndRestart(relaunch = true) {
+  const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || (app.isPackaged ? process.execPath : null);
+
+  // If downloadedUpdateFile is not cached yet, look in pending directory
+  if (!downloadedUpdateFile || !fs.existsSync(downloadedUpdateFile)) {
+    try {
+      const pendingDir = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'pokebonk-updater', 'pending');
+      if (fs.existsSync(pendingDir)) {
+        const files = fs.readdirSync(pendingDir)
+          .filter(f => f.toLowerCase().endsWith('.exe'))
+          .map(f => path.join(pendingDir, f));
+        if (files.length > 0) {
+          files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+          downloadedUpdateFile = files[0];
+        }
+      }
+    } catch (_) {}
+  }
+
+  // If running portable or installed on Windows, overwrite the target executable in-place
+  if (targetExe && downloadedUpdateFile && fs.existsSync(downloadedUpdateFile)) {
+    const tempBat = path.join(app.getPath('temp'), `pokebonk_updater_${Date.now()}.bat`);
+    const launchCommand = relaunch ? `start "" "${targetExe}"` : '';
+
+    const batContent = [
+      '@echo off',
+      'setlocal',
+      `set "NEW_EXE=${downloadedUpdateFile}"`,
+      `set "TARGET_EXE=${targetExe}"`,
+      `set "PID=${process.pid}"`,
+      '',
+      ':wait_loop',
+      'timeout /t 1 /nobreak >nul',
+      'tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" >nul',
+      'if not errorlevel 1 goto wait_loop',
+      '',
+      'set RETRIES=0',
+      ':copy_loop',
+      'copy /Y "%NEW_EXE%" "%TARGET_EXE%" >nul 2>&1',
+      'if not errorlevel 1 goto success',
+      'set /a RETRIES+=1',
+      'if %RETRIES% geq 10 goto finish',
+      'timeout /t 1 /nobreak >nul',
+      'goto copy_loop',
+      '',
+      ':success',
+      launchCommand,
+      '',
+      ':finish',
+      '(goto) 2>nul & del "%~f0"'
+    ].join('\r\n');
+
+    try {
+      fs.writeFileSync(tempBat, batContent, 'ascii');
+      const child = spawn('cmd.exe', ['/c', tempBat], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      });
+      child.unref();
+      app.exit(0);
+      return;
+    } catch (e) {
+      console.error('Failed to spawn portable replacement batch script:', e);
+    }
+  }
+
+  // Fallback to electron-updater default
+  try {
+    autoUpdater.quitAndInstall(false, true);
+  } catch (e) {
+    app.relaunch();
+    app.exit(0);
+  }
+}
+
+autoUpdater.on('update-downloaded', (info) => {
+  if (info && info.downloadedFile) {
+    downloadedUpdateFile = info.downloadedFile;
+  } else if (autoUpdater.downloadedUpdateHelper && autoUpdater.downloadedUpdateHelper.file) {
+    downloadedUpdateFile = autoUpdater.downloadedUpdateHelper.file;
+  }
+
   sendLauncherStatus('ready', { message: 'Update downloaded. Restart to install it.' });
 
   if (updateQueued) {
@@ -278,7 +363,7 @@ autoUpdater.on('update-downloaded', () => {
       buttons: ['Restart', 'Later']
     }).then((result) => {
       if (result.response === 0) {
-        autoUpdater.quitAndInstall(false, true);
+        applyUpdateAndRestart(true);
       }
     }).catch(() => {});
   }
@@ -440,13 +525,7 @@ ipcMain.on('update-game', async () => {
 });
 
 ipcMain.on('install-update', () => {
-  try {
-    autoUpdater.quitAndInstall(false, true);
-  } catch (e) {
-    console.error('Failed to quit and install:', e);
-    app.relaunch();
-    app.exit(0);
-  }
+  applyUpdateAndRestart(true);
 });
 
 ipcMain.on('exit-launcher', () => {
@@ -486,6 +565,14 @@ app.on('window-all-closed', () => {
     try { rpcClient.destroy(); } catch (_) {}
     rpcClient = null;
   }
+
+  // If a new update was downloaded while the app was running and the user closed it,
+  // overwrite the portable executable in-place so the next launch uses the new build!
+  if (downloadedUpdateFile && (process.env.PORTABLE_EXECUTABLE_FILE || app.isPackaged)) {
+    applyUpdateAndRestart(false);
+    return;
+  }
+
   session.defaultSession.cookies.flushStore().finally(() => {
     app.exit(0);
   });
