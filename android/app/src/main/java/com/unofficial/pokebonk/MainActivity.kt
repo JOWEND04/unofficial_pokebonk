@@ -359,14 +359,28 @@ class MainActivity : ComponentActivity() {
                     return isNaN(raw) ? 1.0 : Math.max(0.2, Math.min(3.0, raw));
                 }
 
+                function findNativeSensitivityInput() {
+                    return Array.from(document.querySelectorAll('input.st-range')).find(inp => {
+                        const row = inp.closest('.st-row');
+                        if (!row) return false;
+                        const text = (row.textContent || '').toLowerCase();
+                        return text.includes('sensib') || text.includes('sensit') || (parseFloat(inp.min) <= 0.3 && parseFloat(inp.max) >= 2.5);
+                    });
+                }
+
                 function setStickSensitivity(val) {
-                    const clamped = Math.max(0.5, Math.min(2.0, Math.round(val * 20) / 20));
+                    const clamped = Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
                     localStorage.setItem(SENSITIVITY_KEY, String(clamped));
-                    const existingInput = document.querySelector('#pb-stick-sensitivity-input');
-                    if (existingInput) {
-                        existingInput.value = String(clamped);
-                        existingInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                    const nativeInput = findNativeSensitivityInput();
+                    if (nativeInput) {
+                        nativeInput.value = String(clamped);
+                        nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        nativeInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        const valDisplay = nativeInput.closest('.st-row')?.querySelector('.st-val');
+                        if (valDisplay) valDisplay.textContent = clamped.toFixed(2);
                     }
+
                     const sensItem = document.getElementById('pb-menu-item-sens');
                     if (sensItem) {
                         sensItem.textContent = 'Stick Sensitivity: ' + Math.round(clamped * 100) + '%';
@@ -407,13 +421,12 @@ class MainActivity : ComponentActivity() {
                     }, 1800);
                 }
 
-                const DEADZONE = 0.08;
                 function processAxis(val, sensitivity) {
-                    if (Math.abs(val) < DEADZONE) return 0;
+                    if (Math.abs(val) < 0.06) return 0;
                     const sign = Math.sign(val);
-                    const normalized = (Math.abs(val) - DEADZONE) / (1 - DEADZONE);
-                    const scaled = normalized * sensitivity;
-                    return sign * Math.min(1.0, Math.max(0.0, scaled));
+                    const abs = Math.abs(val);
+                    const curved = Math.pow((abs - 0.06) / (1 - 0.06), 1.0 / Math.max(0.3, sensitivity));
+                    return sign * Math.min(1.0, Math.max(0.0, curved));
                 }
 
                 let lastTogNavTime = 0;
@@ -459,6 +472,19 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 const mappedAxes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
+
+                                // Dynamically amplify camera rotation when right stick is tilted during gameplay
+                                if (i === 0 && (Math.abs(pad.axes[2] || 0) > 0.08 || Math.abs(pad.axes[3] || 0) > 0.08)) {
+                                    const canvas = document.getElementById('game');
+                                    if (canvas && Math.abs(sensitivity - 1.0) > 0.05) {
+                                        const extra = sensitivity - 1.0;
+                                        window.dispatchEvent(new MouseEvent('mousemove', {
+                                            movementX: (pad.axes[2] || 0) * extra * 16,
+                                            movementY: (pad.axes[3] || 0) * extra * 16,
+                                            bubbles: true
+                                        }));
+                                    }
+                                }
 
                                 result[i] = {
                                     id: pad.id,
@@ -550,73 +576,48 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // 2. Inject Stick Sensitivity slider row into Settings under Controls
-                        const stBody = document.querySelector('.st-pane .st-body, .st-body');
-                        if (stBody && !stBody.querySelector('#pb-stick-sensitivity-row')) {
-                            const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
-                            const title = isEn ? 'Controller Stick Sensitivity' : 'Sensibilidad de los sticks';
-                            const sub = isEn ? 'Analog stick responsiveness (50% - 200%)' : 'Respuesta de los sticks del mando (50% - 200%)';
+                        // 2. Enhance and bind the game's native Sensitivity slider for controllers
+                        const nativeInput = findNativeSensitivityInput();
+                        if (nativeInput) {
+                            const row = nativeInput.closest('.st-row');
+                            if (row && !row.dataset.pbPatched) {
+                                row.dataset.pbPatched = 'true';
+                                row.setAttribute('tabindex', '0');
+                                row.style.cursor = 'pointer';
 
-                            const currentVal = getStickSensitivity();
-
-                            const row = document.createElement('div');
-                            row.id = 'pb-stick-sensitivity-row';
-                            row.className = 'st-row range';
-                            row.setAttribute('tabindex', '0');
-
-                            const span = document.createElement('span');
-                            span.textContent = title;
-                            const small = document.createElement('small');
-                            small.textContent = sub;
-                            span.appendChild(small);
-
-                            const input = document.createElement('input');
-                            input.id = 'pb-stick-sensitivity-input';
-                            input.className = 'st-range';
-                            input.type = 'range';
-                            input.min = '0.5';
-                            input.max = '2.0';
-                            input.step = '0.05';
-                            input.value = String(currentVal);
-
-                            const valDisplay = document.createElement('b');
-                            valDisplay.className = 'st-val';
-                            valDisplay.textContent = Math.round(currentVal * 100) + '%';
-
-                            const updateFill = () => {
-                                const p = ((Number(input.value) - 0.5) / (2.0 - 0.5)) * 100;
-                                input.style.setProperty('--p', p + '%');
-                            };
-                            updateFill();
-
-                            input.addEventListener('input', () => {
-                                const v = Number(input.value);
-                                valDisplay.textContent = Math.round(v * 100) + '%';
-                                updateFill();
-                                localStorage.setItem(SENSITIVITY_KEY, String(v));
-                                const sensItem = document.getElementById('pb-menu-item-sens');
-                                if (sensItem) {
-                                    sensItem.textContent = 'Stick Sensitivity: ' + Math.round(v * 100) + '%';
+                                const span = row.querySelector('span');
+                                if (span) {
+                                    const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
+                                    span.innerHTML = `${isEn ? 'Stick & Camera Sensitivity' : 'Sensibilidad de sticks y cámara'}<small>${isEn ? 'Analog stick responsiveness & camera rotation speed (0.2x – 3.0x)' : 'Velocidad de giro del stick analógico y cámara (0.2x – 3.0x)'}</small>`;
                                 }
-                            });
 
-                            row.appendChild(span);
-                            row.appendChild(input);
-                            row.appendChild(valDisplay);
+                                const savedSens = getStickSensitivity();
+                                if (Math.abs(parseFloat(nativeInput.value) - savedSens) > 0.04) {
+                                    nativeInput.value = String(savedSens);
+                                    nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                }
 
-                            const refRow = Array.from(stBody.querySelectorAll('.st-row')).find(r =>
-                                r.textContent.includes('Sensibilidad') ||
-                                r.textContent.includes('Sensitivity') ||
-                                r.textContent.includes('Zona muerta') ||
-                                r.textContent.includes('Deadzone') ||
-                                r.textContent.includes('Mando') ||
-                                r.textContent.includes('Gamepad')
-                            );
+                                row.addEventListener('keydown', (e) => {
+                                    let cur = parseFloat(nativeInput.value) || 1.0;
+                                    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                                        e.preventDefault();
+                                        const next = Math.max(0.2, Math.round((cur - 0.1) * 20) / 20);
+                                        setStickSensitivity(next);
+                                    } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        const next = Math.min(3.0, Math.round((cur + 0.1) * 20) / 20);
+                                        setStickSensitivity(next);
+                                    }
+                                });
 
-                            if (refRow && refRow.nextSibling) {
-                                stBody.insertBefore(row, refRow.nextSibling);
-                            } else {
-                                stBody.appendChild(row);
+                                nativeInput.addEventListener('input', () => {
+                                    const v = parseFloat(nativeInput.value) || 1.0;
+                                    localStorage.setItem(SENSITIVITY_KEY, String(v));
+                                    const sensItem = document.getElementById('pb-menu-item-sens');
+                                    if (sensItem) {
+                                        sensItem.textContent = 'Stick Sensitivity: ' + Math.round(v * 100) + '%';
+                                    }
+                                });
                             }
                         }
                     }
@@ -753,7 +754,7 @@ class MainActivity : ComponentActivity() {
                             'Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%',
                             () => {
                                 const cur = getStickSensitivity();
-                                const next = cur >= 1.55 ? 0.8 : Math.round((cur + 0.2) * 10) / 10;
+                                const next = cur >= 2.9 ? 0.5 : Math.round((cur + 0.25) * 100) / 100;
                                 const updated = setStickSensitivity(next);
                                 showToast('Stick Sensitivity: ' + Math.round(updated * 100) + '%');
                             }

@@ -46,6 +46,7 @@ let rpcReconnectTimer = null;
 let currentActivity = null;
 let runStartTime = null;
 
+const DEFAULT_DISCORD_CLIENT_ID = '1232165629046292551';
 const rpcConfigFile = path.join(app.getPath('userData'), 'discord-rpc.json');
 
 function getDiscordClientId() {
@@ -60,7 +61,7 @@ function getDiscordClientId() {
       }
     }
   } catch (_) {}
-  return '123456789012345678';
+  return DEFAULT_DISCORD_CLIENT_ID;
 }
 
 function setDiscordClientId(id) {
@@ -90,15 +91,14 @@ function applyDiscordActivity(data) {
   const activity = {
     details: data.details || 'Playing PokéBonk',
     state: data.state || 'In a Run',
-    instance: false
+    instance: true
   };
 
   if (data.inRun && data.startTimestamp) {
     activity.startTimestamp = data.startTimestamp;
   }
 
-  // Try with large image key, fallback without if not registered in Discord Portal
-  activity.largeImageKey = 'pokebonk_icon';
+  activity.largeImageKey = 'logo2';
   activity.largeImageText = 'PokéBonk';
 
   rpcClient.setActivity(activity).catch(() => {
@@ -112,13 +112,13 @@ function initDiscordRPC() {
   clearTimeout(rpcReconnectTimer);
   const clientId = getDiscordClientId();
 
-  if (!clientId || clientId === '123456789012345678') {
-    return;
-  }
-
   if (rpcConnected && rpcClient) return;
 
   try {
+    try {
+      RPC.register(clientId);
+    } catch (_) {}
+
     if (rpcClient) {
       try { rpcClient.destroy(); } catch (_) {}
       rpcClient = null;

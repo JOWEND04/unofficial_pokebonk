@@ -168,15 +168,29 @@ window.addEventListener('DOMContentLoaded', () => {
     const SENSITIVITY_KEY = 'pb_stick_sensitivity';
     function getStickSensitivity() {
         const val = parseFloat(localStorage.getItem(SENSITIVITY_KEY) || '1.0');
-        return isNaN(val) ? 1.0 : Math.max(0.2, Math.min(3.0, val));
+        return isNaN(val) ? 1.0 : Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
     }
+
+    function findNativeSensitivityInput() {
+        return Array.from(document.querySelectorAll('input.st-range')).find(inp => {
+            const row = inp.closest('.st-row');
+            if (!row) return false;
+            const text = (row.textContent || '').toLowerCase();
+            return text.includes('sensib') || text.includes('sensit') || (parseFloat(inp.min) <= 0.3 && parseFloat(inp.max) >= 2.5);
+        });
+    }
+
     function setStickSensitivity(val) {
-        const clamped = Math.max(0.5, Math.min(2.0, Math.round(val * 20) / 20));
+        const clamped = Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
         localStorage.setItem(SENSITIVITY_KEY, String(clamped));
-        const existingInput = document.querySelector('#pb-stick-sensitivity-input');
-        if (existingInput) {
-            existingInput.value = String(clamped);
-            existingInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        const nativeInput = findNativeSensitivityInput();
+        if (nativeInput) {
+            nativeInput.value = String(clamped);
+            nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            nativeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            const valDisplay = nativeInput.closest('.st-row')?.querySelector('.st-val');
+            if (valDisplay) valDisplay.textContent = clamped.toFixed(2);
         }
         return clamped;
     }
@@ -187,19 +201,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const id = (idString || '').toLowerCase();
         return id.includes('057e') || id.includes('nintendo') || id.includes('switch') ||
                id.includes('pro controller') || id.includes('joy-con');
-    }
-
-    async function promptDiscordClientId() {
-        const currentId = await ipcRenderer.invoke('get-discord-client-id');
-        const displayVal = (currentId && currentId !== '123456789012345678') ? currentId : '';
-        const input = window.prompt(
-            'Enter your Discord Application ID (from discord.com/developers/applications):\nLeave empty to reset to default.',
-            displayVal
-        );
-        if (input !== null) {
-            await ipcRenderer.invoke('set-discord-client-id', input.trim());
-            showToast('Discord Rich Presence ID updated and reloaded!', 3500);
-        }
     }
 
     window.addEventListener('keydown', (e) => {
@@ -213,11 +214,9 @@ window.addEventListener('DOMContentLoaded', () => {
             );
         } else if (e.key === 'F8') {
             const current = getStickSensitivity();
-            const next = current >= 1.95 ? 0.75 : Math.round((current + 0.25) * 100) / 100;
+            const next = current >= 2.9 ? 0.5 : Math.round((current + 0.25) * 100) / 100;
             const updated = setStickSensitivity(next);
             showToast(`Stick Sensitivity: ${Math.round(updated * 100)}% (F8 cycles, or adjust in Settings)`);
-        } else if (e.key === 'F7') {
-            promptDiscordClientId();
         }
     });
 
@@ -226,19 +225,18 @@ window.addEventListener('DOMContentLoaded', () => {
         const name = nintendo ? 'Nintendo / Switch Controller' : 'Xbox Controller';
         const modeText = swapABXY ? 'Switch Layout' : 'Xbox Layout';
         const sensText = `${Math.round(getStickSensitivity() * 100)}%`;
-        showToast(`${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap | F8: Sens | F7: Discord`, 5500);
+        showToast(`${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap | F8: Sens`, 5000);
     });
 
-    const DEADZONE = 0.08;
     function processAxis(val, sensitivity) {
-        if (Math.abs(val) < DEADZONE) return 0;
+        if (Math.abs(val) < 0.06) return 0;
         const sign = Math.sign(val);
-        const normalized = (Math.abs(val) - DEADZONE) / (1 - DEADZONE);
-        const scaled = normalized * sensitivity;
-        return sign * Math.min(1.0, Math.max(0.0, scaled));
+        const abs = Math.abs(val);
+        const curved = Math.pow((abs - 0.06) / (1 - 0.06), 1.0 / Math.max(0.3, sensitivity));
+        return sign * Math.min(1.0, Math.max(0.0, curved));
     }
 
-    // Settings Gamepad Navigation & Custom Slider Injection
+    // Settings Gamepad Navigation & Native Sensitivity Sync
     function setupSettingsGamepadPatch() {
         function patchSettings() {
             // 1. Enable controller focus on all toggle switch rows so controllers don't skip them
@@ -258,109 +256,45 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 2. Inject Stick Sensitivity & Discord RPC buttons into Settings
-            const stBody = document.querySelector('.st-pane .st-body, .st-body');
-            if (stBody && !stBody.querySelector('#pb-stick-sensitivity-row')) {
-                const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
-                const title = isEn ? 'Controller Stick Sensitivity' : 'Sensibilidad de los sticks';
-                const sub = isEn ? 'Analog stick responsiveness (50% - 200%)' : 'Respuesta de los sticks del mando (50% - 200%)';
+            // 2. Enhance and bind the game's actual native Sensitivity slider for controllers
+            const nativeInput = findNativeSensitivityInput();
+            if (nativeInput) {
+                const row = nativeInput.closest('.st-row');
+                if (row && !row.dataset.pbPatched) {
+                    row.dataset.pbPatched = 'true';
+                    row.setAttribute('tabindex', '0');
+                    row.style.cursor = 'pointer';
 
-                const currentVal = getStickSensitivity();
-
-                const row = document.createElement('div');
-                row.id = 'pb-stick-sensitivity-row';
-                row.className = 'st-row range';
-                row.setAttribute('tabindex', '0');
-
-                const span = document.createElement('span');
-                span.textContent = title;
-                const small = document.createElement('small');
-                small.textContent = sub;
-                span.appendChild(small);
-
-                const input = document.createElement('input');
-                input.id = 'pb-stick-sensitivity-input';
-                input.className = 'st-range';
-                input.type = 'range';
-                input.min = '0.5';
-                input.max = '2.0';
-                input.step = '0.05';
-                input.value = String(currentVal);
-
-                const valDisplay = document.createElement('b');
-                valDisplay.className = 'st-val';
-                valDisplay.textContent = Math.round(currentVal * 100) + '%';
-
-                const updateFill = () => {
-                    const p = ((Number(input.value) - 0.5) / (2.0 - 0.5)) * 100;
-                    input.style.setProperty('--p', p + '%');
-                };
-                updateFill();
-
-                input.addEventListener('input', () => {
-                    const v = Number(input.value);
-                    valDisplay.textContent = Math.round(v * 100) + '%';
-                    updateFill();
-                    localStorage.setItem(SENSITIVITY_KEY, String(v));
-                });
-
-                row.appendChild(span);
-                row.appendChild(input);
-                row.appendChild(valDisplay);
-
-                // Insert near sensitivity / deadzone rows if present, or append
-                const refRow = Array.from(stBody.querySelectorAll('.st-row')).find(r =>
-                    r.textContent.includes('Sensibilidad') ||
-                    r.textContent.includes('Sensitivity') ||
-                    r.textContent.includes('Zona muerta') ||
-                    r.textContent.includes('Deadzone') ||
-                    r.textContent.includes('Mando') ||
-                    r.textContent.includes('Gamepad')
-                );
-
-                if (refRow && refRow.nextSibling) {
-                    stBody.insertBefore(row, refRow.nextSibling);
-                } else {
-                    stBody.appendChild(row);
-                }
-            }
-
-            // 3. Inject Discord RPC button row into Settings
-            if (stBody && !stBody.querySelector('#pb-discord-rpc-row')) {
-                const discordRow = document.createElement('div');
-                discordRow.id = 'pb-discord-rpc-row';
-                discordRow.className = 'st-row';
-                discordRow.setAttribute('tabindex', '0');
-                discordRow.style.cursor = 'pointer';
-
-                const dSpan = document.createElement('span');
-                dSpan.textContent = 'Discord Rich Presence (F7)';
-                const dSmall = document.createElement('small');
-                dSmall.textContent = 'Configure Discord Application ID to display active run status';
-                dSpan.appendChild(dSmall);
-
-                const dBtn = document.createElement('button');
-                dBtn.className = 'btn ghost small';
-                dBtn.textContent = 'Configure ID';
-                dBtn.style.padding = '6px 12px';
-                dBtn.style.borderRadius = '8px';
-                dBtn.style.cursor = 'pointer';
-
-                const clickHandler = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    promptDiscordClientId();
-                };
-                discordRow.addEventListener('click', clickHandler);
-                discordRow.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        clickHandler(e);
+                    const span = row.querySelector('span');
+                    if (span) {
+                        const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
+                        span.innerHTML = `${isEn ? 'Stick & Camera Sensitivity' : 'Sensibilidad de sticks y cámara'}<small>${isEn ? 'Analog stick responsiveness & camera rotation speed (0.2x – 3.0x)' : 'Velocidad de giro del stick analógico y cámara (0.2x – 3.0x)'}</small>`;
                     }
-                });
 
-                discordRow.appendChild(dSpan);
-                discordRow.appendChild(dBtn);
-                stBody.appendChild(discordRow);
+                    const savedSens = getStickSensitivity();
+                    if (Math.abs(parseFloat(nativeInput.value) - savedSens) > 0.04) {
+                        nativeInput.value = String(savedSens);
+                        nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    row.addEventListener('keydown', (e) => {
+                        let cur = parseFloat(nativeInput.value) || 1.0;
+                        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            const next = Math.max(0.2, Math.round((cur - 0.1) * 20) / 20);
+                            setStickSensitivity(next);
+                        } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            const next = Math.min(3.0, Math.round((cur + 0.1) * 20) / 20);
+                            setStickSensitivity(next);
+                        }
+                    });
+
+                    nativeInput.addEventListener('input', () => {
+                        const v = parseFloat(nativeInput.value) || 1.0;
+                        localStorage.setItem(SENSITIVITY_KEY, String(v));
+                    });
+                }
             }
         }
 
@@ -430,6 +364,21 @@ window.addEventListener('DOMContentLoaded', () => {
             }
 
             const mappedAxes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
+
+            // Dynamically amplify camera rotation when right stick is tilted during gameplay
+            if (i === 0 && (Math.abs(pad.axes[2] || 0) > 0.08 || Math.abs(pad.axes[3] || 0) > 0.08)) {
+                const canvas = document.getElementById('game');
+                if (canvas && document.pointerLockElement === canvas) {
+                    const extra = sensitivity - 1.0;
+                    if (Math.abs(extra) > 0.05) {
+                        window.dispatchEvent(new MouseEvent('mousemove', {
+                            movementX: (pad.axes[2] || 0) * extra * 16,
+                            movementY: (pad.axes[3] || 0) * extra * 16,
+                            bubbles: true
+                        }));
+                    }
+                }
+            }
 
             result[i] = {
                 id: pad.id,
