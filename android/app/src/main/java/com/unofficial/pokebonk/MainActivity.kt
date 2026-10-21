@@ -1,82 +1,304 @@
-private fun checkForLatestAndroidRelease() {
-    Thread {
-        try {
-            val json = URL(releaseApiUrl).readText()
-            val release = JSONObject(json)
-            val assets = release.optJSONArray("assets") ?: return@Thread
+package com.unofficial.pokebonk
 
-            var apkAsset: JSONObject? = null
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                if (asset.optString("name").equals("PokeBonk.apk", ignoreCase = true)) {
-                    apkAsset = asset
-                    break
+import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import java.io.File
+import java.net.URL
+import org.json.JSONObject
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var webView: WebView
+    private val gameUrl = "https://pokebonk.com"
+
+    private val releaseApiUrl = "https://api.github.com/repos/JOWEND04/unofficial_pokebonk/releases/latest"
+    private val apkFileName = "PokeBonk.apk"
+    private var downloadId: Long = 0L
+    private var pendingInstallUri: Uri? = null
+
+    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        checkForLatestAndroidRelease()
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
+        enableImmersiveFullscreen()
+
+        webView = WebView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.BLACK)
+
+            isFocusable = true
+            isFocusableInTouchMode = true
+            defaultFocusHighlightEnabled = false
+
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                cacheMode = WebSettings.LOAD_DEFAULT
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                setSupportZoom(false)
+                builtInZoomControls = false
+                displayZoomControls = false
+                userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            }
+
+            webChromeClient = WebChromeClient()
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): Boolean {
+                    val host = request?.url?.host ?: return false
+                    val allowed = listOf("pokebonk", "solais.cloud", "google", "discord")
+                    return allowed.none { host.contains(it, ignoreCase = true) }
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    view?.evaluateJavascript(
+                        """
+                        (function() {
+                            const style = document.createElement('style');
+                            style.innerHTML = `
+                                * { -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; outline: none !important; }
+                                html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; }
+                                body { touch-action: none; }
+                                canvas#game { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
+                            `;
+                            document.head.appendChild(style);
+                            window.focus();
+                        })();
+                        """.trimIndent(),
+                        null
+                    )
+                    view?.requestFocus()
                 }
             }
-
-            if (apkAsset == null) return@Thread
-
-            val currentVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
-            val latestVersion = release.optString("tag_name", "").removePrefix("v")
-
-            if (latestVersion.isBlank() || currentVersion >= latestVersion) {
-                return@Thread
-            }
-
-            val apkUrl = apkAsset.optString("browser_download_url")
-            if (apkUrl.isBlank()) return@Thread
-
-            runOnUiThread {
-                promptToDownloadApk(apkUrl)
-            }
-        } catch (_: Exception) {
-            // Ignore network errors silently
         }
-    }.start()
-}
 
-private fun promptToDownloadApk(apkUrl: String) {
-    val apkUri = Uri.parse(apkUrl)
-    val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
-    if (file.exists()) {
-        file.delete()
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+
+        setContentView(webView)
+        webView.loadUrl(gameUrl)
+        webView.requestFocus()
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                sendEscapeKeyToGame()
+            }
+        })
     }
 
-    val request = DownloadManager.Request(apkUri)
-        .setTitle("PokéBonk update")
-        .setDescription("Downloading latest PokeBonk APK")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalFilesDir(Environment.DIRECTORY_DOWNLOADS, apkFileName)
-        .setAllowedOverMetered(true)
-        .setAllowedToWrite(true)
-        .setAllowedUnderRoaming(true)
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        val isGamepad = (event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK ||
+            (event.source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        if (isGamepad) {
+            if (!webView.hasFocus()) webView.requestFocus()
+            if (webView.onGenericMotionEvent(event)) return true
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
 
-    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    downloadId = dm.enqueue(request)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isGamepad = (event.source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+            (event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK ||
+            (event.source and InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
 
-    registerReceiver(object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val action = intent.action
-            if (action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                if (id == downloadId) {
-                    val downloadedFile = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
-                    if (downloadedFile.exists()) {
-                        pendingInstallUri = FileProvider.getUriForFile(
-                            this@MainActivity,
-                            "${packageName}.fileprovider",
-                            downloadedFile
-                        )
+        if (isGamepad) {
+            if (!webView.hasFocus()) webView.requestFocus()
 
-                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(pendingInstallUri, "application/vnd.android.package-archive")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_BUTTON_B) {
+                if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+                    val bEvent = KeyEvent(
+                        event.downTime,
+                        event.eventTime,
+                        event.action,
+                        KeyEvent.KEYCODE_BUTTON_B,
+                        event.repeatCount,
+                        event.metaState,
+                        event.deviceId,
+                        event.scanCode,
+                        event.flags,
+                        InputDevice.SOURCE_GAMEPAD
+                    )
+                    return webView.dispatchKeyEvent(bEvent)
+                }
+                return webView.dispatchKeyEvent(event)
+            }
+
+            if (webView.dispatchKeyEvent(event)) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun sendEscapeKeyToGame() {
+        webView.evaluateJavascript(
+            """
+            window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'Escape', 'code': 'Escape', 'keyCode': 27, 'bubbles': true}));
+            setTimeout(() => {
+                window.dispatchEvent(new KeyboardEvent('keyup', {'key': 'Escape', 'code': 'Escape', 'keyCode': 27, 'bubbles': true}));
+            }, 50);
+            """.trimIndent(),
+            null
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        webView.resumeTimers()
+        enableImmersiveFullscreen()
+        webView.requestFocus()
+    }
+
+    override fun onPause() {
+        CookieManager.getInstance().flush()
+        webView.pauseTimers()
+        webView.onPause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enableImmersiveFullscreen()
+            webView.requestFocus()
+        }
+    }
+
+    private fun enableImmersiveFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun checkForLatestAndroidRelease() {
+        Thread {
+            try {
+                val json = URL(releaseApiUrl).readText()
+                val release = JSONObject(json)
+                val assets = release.optJSONArray("assets") ?: return@Thread
+
+                var apkAsset: JSONObject? = null
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    if (asset.optString("name").equals("PokeBonk.apk", ignoreCase = true)) {
+                        apkAsset = asset
+                        break
+                    }
+                }
+
+                if (apkAsset == null) {
+                    return@Thread
+                }
+
+                runOnUiThread {
+                    promptToDownloadApk(apkAsset.optString("browser_download_url"))
+                }
+            } catch (_: Exception) {
+                // Ignore network errors silently
+            }
+        }.start()
+    }
+
+    private fun promptToDownloadApk(apkUrl: String) {
+        val apkUri = Uri.parse(apkUrl)
+        val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
+        if (file.exists()) {
+            file.delete()
+        }
+
+        val request = DownloadManager.Request(apkUri)
+            .setTitle("PokéBonk update")
+            .setDescription("Downloading latest PokeBonk APK")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(Environment.DIRECTORY_DOWNLOADS, apkFileName)
+            .setAllowedOverMetered(true)
+            .setAllowedToWrite(true)
+            .setAllowedUnderRoaming(true)
+
+        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        downloadId = dm.enqueue(request)
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val action = intent.action
+                if (action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
+                    val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+                    if (id == downloadId) {
+                        val downloadedFile = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
+                        if (downloadedFile.exists()) {
+                            pendingInstallUri = FileProvider.getUriForFile(
+                                this@MainActivity,
+                                "${packageName}.fileprovider",
+                                downloadedFile
+                            )
+
+                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(pendingInstallUri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(installIntent)
                         }
-                        startActivity(installIntent)
                     }
                 }
             }
         }
-    }, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+
+        registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+    }
 }
