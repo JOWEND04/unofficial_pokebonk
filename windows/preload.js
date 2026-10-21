@@ -70,9 +70,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
 
-    // Dynamic Resize Observer to keep canvas container proportional
+    // Dynamic Resize Observer to keep canvas container proportional without redundant loops
+    let lastW = window.innerWidth;
+    let lastH = window.innerHeight;
     const observer = new ResizeObserver(() => {
-        window.dispatchEvent(new Event('resize'));
+        if (window.innerWidth !== lastW || window.innerHeight !== lastH) {
+            lastW = window.innerWidth;
+            lastH = window.innerHeight;
+            window.dispatchEvent(new Event('resize'));
+        }
     });
     observer.observe(document.body);
 
@@ -239,10 +245,11 @@ window.addEventListener('DOMContentLoaded', () => {
     // Settings Gamepad Navigation & Native Sensitivity Sync
     function setupSettingsGamepadPatch() {
         function patchSettings() {
-            // 1. Enable controller focus on all toggle switch rows so controllers don't skip them
-            const toggleRows = document.querySelectorAll('.st-row.tog, .st-row:has(.switch), .modal .st-row:has(button.switch)');
-            for (const row of toggleRows) {
-                if (!row.dataset.pbPatched) {
+            // 1. Enable controller focus on all toggle switch rows safely without CSS :has() issues
+            const allRows = document.querySelectorAll('.st-row');
+            for (const row of allRows) {
+                const isToggle = row.classList.contains('tog') || row.querySelector('.switch') || row.querySelector('button.switch');
+                if (isToggle && !row.dataset.pbPatched) {
                     row.dataset.pbPatched = 'true';
                     row.setAttribute('tabindex', '0');
                     row.style.cursor = 'pointer';
@@ -325,12 +332,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.add('controller-active');
             }
 
-            // D-Pad Left / Right toggling for active toggle switch row
-            const activeTog = document.querySelector('.st-row.tog.pad-focus, .st-row.pad-focus:has(.switch)');
-            if (activeTog) {
-                const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
-                const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
-                if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+            // D-Pad Left / Right toggling for active toggle switch row (only query when button is pressed)
+            const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
+            const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
+            if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+                const activeTog = document.querySelector('.st-row.pad-focus, .st-row.tog:focus');
+                if (activeTog) {
                     lastTogNavTime = performance.now();
                     activeTog.click();
                 }
@@ -367,11 +374,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
             // Dynamically amplify camera rotation when right stick is tilted during gameplay
             if (i === 0 && (Math.abs(pad.axes[2] || 0) > 0.08 || Math.abs(pad.axes[3] || 0) > 0.08)) {
-                const canvas = document.getElementById('game');
-                if (canvas && document.pointerLockElement === canvas) {
+                if (document.pointerLockElement) {
                     const extra = sensitivity - 1.0;
                     if (Math.abs(extra) > 0.05) {
-                        window.dispatchEvent(new MouseEvent('mousemove', {
+                        const target = document.pointerLockElement || document.getElementById('game') || document;
+                        target.dispatchEvent(new MouseEvent('mousemove', {
                             movementX: (pad.axes[2] || 0) * extra * 16,
                             movementY: (pad.axes[3] || 0) * extra * 16,
                             bubbles: true

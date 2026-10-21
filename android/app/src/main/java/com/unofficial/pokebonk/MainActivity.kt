@@ -163,6 +163,13 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl(gameUrl)
         webView.requestFocus()
 
+        // Background update check on startup (non-intrusive banner only if genuine update exists)
+        mainHandler.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                checkForLatestAndroidRelease(isUserInitiated = false)
+            }
+        }, 4500)
+
         var lastBackPressTime = 0L
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -444,12 +451,12 @@ class MainActivity : ComponentActivity() {
                                 const pad = rawPads[i];
                                 if (!pad) continue;
 
-                                // D-Pad Left / Right toggle support for active toggle switch row
-                                const activeTog = document.querySelector('.st-row.tog.pad-focus, .st-row.pad-focus:has(.switch)');
-                                if (activeTog) {
-                                    const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
-                                    const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
-                                    if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+                                // D-Pad Left / Right toggle support for active toggle switch row (only when D-pad pressed)
+                                const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
+                                const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
+                                if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+                                    const activeTog = document.querySelector('.st-row.pad-focus, .st-row.tog:focus');
+                                    if (activeTog) {
                                         lastTogNavTime = performance.now();
                                         activeTog.click();
                                     }
@@ -478,7 +485,8 @@ class MainActivity : ComponentActivity() {
                                     const canvas = document.getElementById('game');
                                     if (canvas && Math.abs(sensitivity - 1.0) > 0.05) {
                                         const extra = sensitivity - 1.0;
-                                        window.dispatchEvent(new MouseEvent('mousemove', {
+                                        const target = canvas || document;
+                                        target.dispatchEvent(new MouseEvent('mousemove', {
                                             movementX: (pad.axes[2] || 0) * extra * 16,
                                             movementY: (pad.axes[3] || 0) * extra * 16,
                                             bubbles: true
@@ -543,7 +551,7 @@ class MainActivity : ComponentActivity() {
                         .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
                             filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
                         }
-                        @media (max-height: 560px) {
+                        @media (max-height: 640px), (orientation: landscape) {
                             .mm-top {
                                 max-width: 52vw !important;
                                 right: calc(14px + var(--sr, 0px)) !important;
@@ -559,10 +567,11 @@ class MainActivity : ComponentActivity() {
 
                 function setupSettingsGamepadPatch() {
                     function patchSettings() {
-                        // 1. Enable controller focus on all toggle switch rows so controllers don't skip them
-                        const toggleRows = document.querySelectorAll('.st-row.tog, .st-row:has(.switch), .modal .st-row:has(button.switch)');
-                        for (const row of toggleRows) {
-                            if (!row.dataset.pbPatched) {
+                        // 1. Enable controller focus on all toggle switch rows safely without CSS :has() issues
+                        const allRows = document.querySelectorAll('.st-row');
+                        for (const row of allRows) {
+                            const isToggle = row.classList.contains('tog') || row.querySelector('.switch') || row.querySelector('button.switch');
+                            if (isToggle && !row.dataset.pbPatched) {
                                 row.dataset.pbPatched = 'true';
                                 row.setAttribute('tabindex', '0');
                                 row.style.cursor = 'pointer';

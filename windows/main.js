@@ -5,21 +5,33 @@ const RPC = require('discord-rpc');
 const { autoUpdater } = require('electron-updater');
 
 // Ensure app-update.yml exists in resources so electron-updater never throws ENOENT in portable builds
+const updateConfigContent = [
+  'owner: JOWEND04',
+  'repo: unofficial_pokebonk_app',
+  'provider: github',
+  'updaterCacheDirName: pokebonk-updater'
+].join('\n');
+
 if (process.resourcesPath) {
   try {
+    if (!fs.existsSync(process.resourcesPath)) {
+      fs.mkdirSync(process.resourcesPath, { recursive: true });
+    }
     const updateConfigPath = path.join(process.resourcesPath, 'app-update.yml');
     if (!fs.existsSync(updateConfigPath)) {
-      fs.writeFileSync(updateConfigPath, [
-        'owner: JOWEND04',
-        'repo: unofficial_pokebonk_app',
-        'provider: github',
-        'updaterCacheDirName: pokebonk-updater'
-      ].join('\n'), 'utf8');
+      fs.writeFileSync(updateConfigPath, updateConfigContent, 'utf8');
     }
   } catch (err) {
-    console.warn('Unable to write fallback app-update.yml:', err.message);
+    console.warn('Unable to write fallback app-update.yml to resources:', err.message);
   }
 }
+
+try {
+  const appPathConfig = path.join(app.getAppPath(), 'app-update.yml');
+  if (!fs.existsSync(appPathConfig)) {
+    fs.writeFileSync(appPathConfig, updateConfigContent, 'utf8');
+  }
+} catch (_) {}
 
 app.setPath('userData', path.join(app.getPath('appData'), 'PokeBonk'));
 
@@ -33,6 +45,8 @@ app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
 
 let launcherWindow = null;
 let mainWindow = null;
@@ -143,8 +157,19 @@ function initDiscordRPC() {
       rpcConnected = false;
     });
 
+    if (rpcClient.transport) {
+      rpcClient.transport.on('close', () => {
+        rpcConnected = false;
+        clearTimeout(rpcReconnectTimer);
+        rpcReconnectTimer = setTimeout(() => {
+          initDiscordRPC();
+        }, 15000);
+      });
+    }
+
     rpcClient.login({ clientId }).catch(() => {
       rpcConnected = false;
+      clearTimeout(rpcReconnectTimer);
       rpcReconnectTimer = setTimeout(() => {
         initDiscordRPC();
       }, 15000);
@@ -382,18 +407,16 @@ ipcMain.on('update-game', async () => {
   updateQueued = true;
 
   try {
+    sendLauncherStatus('checking', { message: 'Checking for updates…' });
     const result = await autoUpdater.checkForUpdates();
-    if (result && result.updateInfo && result.updateInfo.version) {
-      sendLauncherStatus('downloading', {
-        version: result.updateInfo.version,
-        message: 'Downloading update…'
-      });
-      await autoUpdater.downloadUpdate();
-    } else {
-      sendLauncherStatus('up-to-date', { message: 'You are already on the latest version.' });
+    if (!result || !result.updateInfo || result.updateInfo.version === app.getVersion()) {
+      sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
     }
   } catch (error) {
     const msg = error && error.message ? error.message : '';
+    if (msg.includes('already started') || msg.includes('downloading')) {
+      return;
+    }
     if (msg.includes('latest.yml') || msg.includes('404') || msg.includes('app-update.yml') || msg.includes('ENOENT')) {
       sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
     } else {
@@ -401,6 +424,16 @@ ipcMain.on('update-game', async () => {
         message: 'Unable to check for updates right now.'
       });
     }
+  }
+});
+
+ipcMain.on('install-update', () => {
+  try {
+    autoUpdater.quitAndInstall(false, true);
+  } catch (e) {
+    console.error('Failed to quit and install:', e);
+    app.relaunch();
+    app.exit(0);
   }
 });
 

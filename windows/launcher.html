@@ -331,6 +331,8 @@
       const progressContainer = document.getElementById('progress-container');
       const progressBar = document.getElementById('progress-bar');
 
+      let updateReady = false;
+
       function updateStatus(stateClass, title, description, showProgress = false, percent = 0) {
         card.className = `status-card state-${stateClass}`;
         titleEl.textContent = title;
@@ -352,14 +354,17 @@
             updateStatus('checking', 'Checking for Updates', msg || 'Scanning GitHub for latest builds...');
             break;
           case 'update-available':
-            updateStatus('downloading', 'Update Available', `Version ${payload.version || 'new'} found. Ready to download.`);
+            updateStatus('downloading', 'Update Available', `Version ${payload.version || 'new'} found. Downloading...`);
             break;
           case 'downloading':
             const pct = Number(payload.percent || 0);
-            updateStatus('downloading', 'Downloading Update', `${pct}% complete. Relaunch will occur automatically.`, true, pct);
+            updateStatus('downloading', 'Downloading Update', `${pct}% complete. Restart to apply after download.`, true, pct);
             break;
           case 'ready':
-            updateStatus('success', 'Update Downloaded', msg || 'Restart the application to apply the latest build.');
+            updateReady = true;
+            updateStatus('success', 'Update Downloaded', msg || 'Click Restart & Update to apply the latest build.');
+            const launchBtn = document.getElementById('launch');
+            launchBtn.textContent = 'Restart & Update';
             break;
           case 'up-to-date':
             updateStatus('success', 'Up to Date', msg || 'Your client is running the latest live build.');
@@ -374,7 +379,11 @@
       });
 
       document.getElementById('launch').addEventListener('click', () => {
-        ipcRenderer.send('launch-game');
+        if (updateReady) {
+          ipcRenderer.send('install-update');
+        } else {
+          ipcRenderer.send('launch-game');
+        }
       });
 
       document.getElementById('update').addEventListener('click', () => {
