@@ -339,21 +339,21 @@ jobs:
         with:
           ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
 
-      - name: Select Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app || sudo xcode-select -switch /Applications/Xcode.app
+      - name: Display Xcode Version
+        run: xcodebuild -version
 
-      - name: Build Unsigned iOS App Bundle
+      - name: Build Sideloadable iOS App Bundle
         run: |
-          xcodebuild \
+          xcodebuild build \
             -project ios/PokeBonk.xcodeproj \
             -scheme PokeBonk \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            clean build
+            CODE_SIGNING_ALLOWED=YES \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package Payload into Sideloadable IPA
         run: |
