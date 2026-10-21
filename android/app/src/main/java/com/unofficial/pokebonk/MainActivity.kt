@@ -435,7 +435,6 @@ class MainActivity : ComponentActivity() {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(Environment.DIRECTORY_DOWNLOADS, apkFileName)
             .setAllowedOverMetered(true)
-            .setAllowedToWrite(true)
             .setAllowedUnderRoaming(true)
 
         val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
