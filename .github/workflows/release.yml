@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -78,7 +78,21 @@ jobs:
               BUMP_TYPE="none"
             fi
 
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+            BEFORE_SHA="${{ github.event.before }}"
+            if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+              CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD 2>/dev/null || echo "")
+            else
+              CHANGED_FILES=""
+            fi
+
+            if [ -z "$CHANGED_FILES" ]; then
+              CHANGED_FILES=$(git log -m -1 --name-only --pretty="" HEAD 2>/dev/null || echo "")
+            fi
+
+            if [ -z "$CHANGED_FILES" ]; then
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+            fi
+
             echo "Changed files:"
             echo "$CHANGED_FILES"
 
@@ -89,6 +103,12 @@ jobs:
             if echo "$CHANGED_FILES" | grep -q '^scripts/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
             if echo "$CHANGED_FILES" | grep -q '^\.github/workflows/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
 
+            if echo "$COMMIT_MSG" | grep -iqE '(bump version|release)'; then
+              if echo "$COMMIT_MSG" | grep -iq 'android'; then HAS_ANDROID=true; fi
+              if echo "$COMMIT_MSG" | grep -iq 'windows'; then HAS_WINDOWS=true; fi
+              if ! $HAS_ANDROID && ! $HAS_WINDOWS; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
+            fi
+
             if [ "$HAS_ANDROID" = "true" ] && [ "$HAS_WINDOWS" = "true" ]; then
               TARGET="all"
             elif [ "$HAS_ANDROID" = "true" ]; then
@@ -96,7 +116,7 @@ jobs:
             elif [ "$HAS_WINDOWS" = "true" ]; then
               TARGET="windows"
             else
-              TARGET="none"
+              TARGET="all"
             fi
           fi
 
