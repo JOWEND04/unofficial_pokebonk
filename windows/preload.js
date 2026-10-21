@@ -108,28 +108,59 @@ window.addEventListener('DOMContentLoaded', () => {
         document.body.classList.remove('controller-active');
     });
 
-    // Discord RPC updater loop
-    let lastSentDetails = '';
+    // --- Enhanced Discord RPC Game State Scraper ---
+    let lastSentState = '';
+    let runActive = false;
+
     setInterval(() => {
         try {
-            const scoreElem = document.querySelector('.score, [class*="score"], [class*="run-stats"]');
-            const bossElem = document.querySelector('.boss-name, [class*="boss"]');
-            
-            let details = 'Exploring Map';
-            let state = 'In Active Run';
+            const biomeElem = document.querySelector('.ht-biome');
+            const zoneElem = document.querySelector('.ht-zone');
+            const pkmnElem = document.querySelector('.slot:not(.empty) .nm, .hud-party .nm, [class*="hud-party"] [class*="nm"]');
+            const lvlElem = document.querySelector('.slot:not(.empty) .lvl, .hud-party .lvl, [class*="hud-party"] [class*="lvl"]');
+            const streakElem = document.querySelector('.streak, [class*="streak"]');
 
-            if (bossElem && bossElem.textContent) {
-                details = `Fighting Boss: ${bossElem.textContent.trim()}`;
-            } else if (scoreElem && scoreElem.textContent) {
-                details = `Run Score: ${scoreElem.textContent.trim()}`;
-            }
+            if (biomeElem && biomeElem.textContent && biomeElem.textContent.trim()) {
+                const biome = biomeElem.textContent.trim();
+                const zone = zoneElem && zoneElem.textContent ? zoneElem.textContent.trim() : '';
+                const details = zone ? `${biome} (${zone})` : biome;
 
-            if (details !== lastSentDetails) {
-                lastSentDetails = details;
-                ipcRenderer.send('update-rpc', { details, state, resetTimer: true });
+                let state = 'Surviving in Wilds';
+                if (pkmnElem && pkmnElem.textContent && pkmnElem.textContent.trim()) {
+                    const pkmn = pkmnElem.textContent.trim();
+                    const lvl = lvlElem && lvlElem.textContent ? ` Lv.${lvlElem.textContent.trim()}` : '';
+                    state = `Partner: ${pkmn}${lvl}`;
+                } else if (streakElem && streakElem.textContent && streakElem.textContent.trim()) {
+                    state = `Streak: ${streakElem.textContent.trim()}`;
+                }
+
+                const stateKey = `${details}|${state}`;
+                const justStartedRun = !runActive;
+                runActive = true;
+
+                if (stateKey !== lastSentState || justStartedRun) {
+                    lastSentState = stateKey;
+                    ipcRenderer.send('update-rpc', {
+                        details,
+                        state,
+                        inRun: true,
+                        resetTimer: justStartedRun
+                    });
+                }
+            } else {
+                runActive = false;
+                const menuKey = 'MENU';
+                if (lastSentState !== menuKey) {
+                    lastSentState = menuKey;
+                    ipcRenderer.send('update-rpc', {
+                        details: 'Title Screen / Main Menu',
+                        state: 'Choosing Pokémon & Settings',
+                        inRun: false
+                    });
+                }
             }
-        } catch (e) {}
-    }, 6000);
+        } catch (_) {}
+    }, 4000);
 
     // Controller input mapping & Stick Sensitivity
     const SENSITIVITY_KEY = 'pb_stick_sensitivity';
@@ -156,6 +187,19 @@ window.addEventListener('DOMContentLoaded', () => {
                id.includes('pro controller') || id.includes('joy-con');
     }
 
+    async function promptDiscordClientId() {
+        const currentId = await ipcRenderer.invoke('get-discord-client-id');
+        const displayVal = (currentId && currentId !== '123456789012345678') ? currentId : '';
+        const input = window.prompt(
+            'Enter your Discord Application ID (from discord.com/developers/applications):\nLeave empty to reset to default.',
+            displayVal
+        );
+        if (input !== null) {
+            await ipcRenderer.invoke('set-discord-client-id', input.trim());
+            showToast('Discord Rich Presence ID updated and reloaded!', 3500);
+        }
+    }
+
     window.addEventListener('keydown', (e) => {
         if (e.key === 'F9') {
             swapABXY = !swapABXY;
@@ -170,6 +214,8 @@ window.addEventListener('DOMContentLoaded', () => {
             const next = current >= 1.95 ? 0.75 : Math.round((current + 0.25) * 100) / 100;
             const updated = setStickSensitivity(next);
             showToast(`🎯 Stick Sensitivity: ${Math.round(updated * 100)}% (Press F8 to cycle, or adjust in Settings)`);
+        } else if (e.key === 'F7') {
+            promptDiscordClientId();
         }
     });
 
@@ -178,7 +224,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const name = nintendo ? 'Nintendo / Switch Mode Controller' : 'Xbox / XInput Controller';
         const modeText = swapABXY ? 'Swapped AB/XY' : 'Standard Positional';
         const sensText = `${Math.round(getStickSensitivity() * 100)}%`;
-        showToast(`🎮 ${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap layout | F8: Sensitivity`, 5000);
+        showToast(`🎮 ${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap layout | F8: Sensitivity | F7: Discord ID`, 5500);
     });
 
     const DEADZONE = 0.08;
@@ -210,7 +256,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 2. Inject Stick Sensitivity slider row into Settings under Controls / Gameplay
+            // 2. Inject Stick Sensitivity & Discord RPC buttons into Settings
             const stBody = document.querySelector('.st-pane .st-body, .st-body');
             if (stBody && !stBody.querySelector('#pb-stick-sensitivity-row')) {
                 const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
@@ -275,6 +321,44 @@ window.addEventListener('DOMContentLoaded', () => {
                 } else {
                     stBody.appendChild(row);
                 }
+            }
+
+            // 3. Inject Discord RPC button row into Settings
+            if (stBody && !stBody.querySelector('#pb-discord-rpc-row')) {
+                const discordRow = document.createElement('div');
+                discordRow.id = 'pb-discord-rpc-row';
+                discordRow.className = 'st-row';
+                discordRow.setAttribute('tabindex', '0');
+                discordRow.style.cursor = 'pointer';
+
+                const dSpan = document.createElement('span');
+                dSpan.textContent = 'Discord Rich Presence (F7)';
+                const dSmall = document.createElement('small');
+                dSmall.textContent = 'Configure Discord Application ID to display active run status';
+                dSpan.appendChild(dSmall);
+
+                const dBtn = document.createElement('button');
+                dBtn.className = 'btn ghost small';
+                dBtn.textContent = 'Configure ID';
+                dBtn.style.padding = '6px 12px';
+                dBtn.style.borderRadius = '8px';
+                dBtn.style.cursor = 'pointer';
+
+                const clickHandler = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    promptDiscordClientId();
+                };
+                discordRow.addEventListener('click', clickHandler);
+                discordRow.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        clickHandler(e);
+                    }
+                });
+
+                discordRow.appendChild(dSpan);
+                discordRow.appendChild(dBtn);
+                stBody.appendChild(discordRow);
             }
         }
 

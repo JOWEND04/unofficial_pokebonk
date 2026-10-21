@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const RPC = require('discord-rpc');
@@ -39,9 +39,149 @@ let mainWindow = null;
 let sleepBlockerId = null;
 let updateQueued = false;
 
-const DISCORD_CLIENT_ID = '123456789012345678';
-const rpc = new RPC.Client({ transport: 'ipc' });
+// --- Discord Rich Presence Subsystem ---
+let rpcClient = null;
 let rpcConnected = false;
+let rpcReconnectTimer = null;
+let currentActivity = null;
+let runStartTime = null;
+
+const rpcConfigFile = path.join(app.getPath('userData'), 'discord-rpc.json');
+
+function getDiscordClientId() {
+  if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_ID.trim()) {
+    return process.env.DISCORD_CLIENT_ID.trim();
+  }
+  try {
+    if (fs.existsSync(rpcConfigFile)) {
+      const data = JSON.parse(fs.readFileSync(rpcConfigFile, 'utf8'));
+      if (data.clientId && data.clientId.trim()) {
+        return data.clientId.trim();
+      }
+    }
+  } catch (_) {}
+  return '123456789012345678';
+}
+
+function setDiscordClientId(id) {
+  try {
+    fs.writeFileSync(rpcConfigFile, JSON.stringify({ clientId: (id || '').trim() }, null, 2), 'utf8');
+    restartDiscordRPC();
+    return true;
+  } catch (e) {
+    console.error('Failed to save Discord Client ID:', e);
+    return false;
+  }
+}
+
+function restartDiscordRPC() {
+  if (rpcClient) {
+    try { rpcClient.destroy(); } catch (_) {}
+    rpcClient = null;
+  }
+  rpcConnected = false;
+  initDiscordRPC();
+}
+
+function applyDiscordActivity(data) {
+  currentActivity = data;
+  if (!rpcConnected || !rpcClient) return;
+
+  const activity = {
+    details: data.details || 'Playing PokéBonk',
+    state: data.state || 'In a Run',
+    instance: false
+  };
+
+  if (data.inRun && data.startTimestamp) {
+    activity.startTimestamp = data.startTimestamp;
+  }
+
+  // Try with large image key, fallback without if not registered in Discord Portal
+  activity.largeImageKey = 'pokebonk_icon';
+  activity.largeImageText = 'PokéBonk';
+
+  rpcClient.setActivity(activity).catch(() => {
+    delete activity.largeImageKey;
+    delete activity.largeImageText;
+    rpcClient.setActivity(activity).catch(() => {});
+  });
+}
+
+function initDiscordRPC() {
+  clearTimeout(rpcReconnectTimer);
+  const clientId = getDiscordClientId();
+
+  if (!clientId || clientId === '123456789012345678') {
+    return;
+  }
+
+  if (rpcConnected && rpcClient) return;
+
+  try {
+    if (rpcClient) {
+      try { rpcClient.destroy(); } catch (_) {}
+      rpcClient = null;
+    }
+
+    rpcClient = new RPC.Client({ transport: 'ipc' });
+
+    rpcClient.on('ready', () => {
+      rpcConnected = true;
+      if (currentActivity) {
+        applyDiscordActivity(currentActivity);
+      } else {
+        applyDiscordActivity({
+          details: 'Title Screen / Main Menu',
+          state: 'Choosing Pokémon & Settings',
+          inRun: false
+        });
+      }
+    });
+
+    rpcClient.on('error', () => {
+      rpcConnected = false;
+    });
+
+    rpcClient.login({ clientId }).catch(() => {
+      rpcConnected = false;
+      rpcReconnectTimer = setTimeout(() => {
+        initDiscordRPC();
+      }, 15000);
+    });
+
+  } catch (_) {
+    rpcConnected = false;
+    rpcReconnectTimer = setTimeout(() => {
+      initDiscordRPC();
+    }, 15000);
+  }
+}
+
+ipcMain.on('update-rpc', (event, data) => {
+  if (data.inRun) {
+    if (!runStartTime || data.resetTimer) {
+      runStartTime = Date.now();
+    }
+  } else {
+    runStartTime = null;
+  }
+
+  applyDiscordActivity({
+    details: data.details,
+    state: data.state,
+    inRun: Boolean(data.inRun),
+    startTimestamp: runStartTime
+  });
+});
+
+ipcMain.handle('get-discord-client-id', () => {
+  return getDiscordClientId();
+});
+
+ipcMain.handle('set-discord-client-id', (event, id) => {
+  return setDiscordClientId(id);
+});
 
 function sendLauncherStatus(status, payload = {}) {
   if (launcherWindow && !launcherWindow.isDestroyed()) {
@@ -110,38 +250,6 @@ autoUpdater.on('update-downloaded', () => {
   }
 });
 
-function initDiscordRPC() {
-  setTimeout(() => {
-    rpc.on('ready', () => {
-      rpcConnected = true;
-      rpc.setActivity({
-        details: 'In Menu / Title Screen',
-        state: 'Choosing Pokémon',
-        largeImageKey: 'pokebonk_icon',
-        largeImageText: 'PokéBonk',
-        instance: false
-      }).catch(() => {});
-    });
-    rpc.login({ clientId: DISCORD_CLIENT_ID }).catch(() => { rpcConnected = false; });
-  }, 2500);
-}
-
-ipcMain.on('update-rpc', (event, data) => {
-  if (!rpcConnected) return;
-  try {
-    rpc.setActivity({
-      details: data.details || 'Playing PokéBonk',
-      state: data.state || 'In a Run',
-      largeImageKey: 'pokebonk_icon',
-      largeImageText: 'PokéBonk',
-      startTimestamp: data.resetTimer ? Date.now() : undefined,
-      instance: false
-    }).catch(() => {});
-  } catch (e) {
-    rpcConnected = false;
-  }
-});
-
 function launchGameWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
@@ -188,10 +296,12 @@ function launchGameWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    const allowed = ['pokebonk', 'solais.cloud', 'google', 'discord'];
-    if (allowed.some(domain => url.toLowerCase().includes(domain))) {
+    const isInternal = ['pokebonk.com', 'solais.cloud'].some(domain => url.toLowerCase().includes(domain));
+    if (isInternal) {
       return { action: 'allow' };
     }
+    // Open external links (Discord, Twitter, Google, etc.) in user's default browser
+    shell.openExternal(url).catch(() => {});
     return { action: 'deny' };
   });
 
@@ -310,6 +420,9 @@ app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
+  } else if (launcherWindow) {
+    if (launcherWindow.isMinimized()) launcherWindow.restore();
+    launcherWindow.focus();
   }
 });
 
@@ -319,8 +432,9 @@ app.on('window-all-closed', () => {
   if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
     powerSaveBlocker.stop(sleepBlockerId);
   }
-  if (rpcConnected) {
-    rpc.destroy().catch(() => {});
+  if (rpcClient) {
+    try { rpcClient.destroy(); } catch (_) {}
+    rpcClient = null;
   }
   session.defaultSession.cookies.flushStore().finally(() => {
     app.exit(0);

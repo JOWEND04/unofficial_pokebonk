@@ -121,9 +121,18 @@ class MainActivity : ComponentActivity() {
                     view: WebView?,
                     request: WebResourceRequest?
                 ): Boolean {
-                    val host = request?.url?.host ?: return false
-                    val allowed = listOf("pokebonk", "solais.cloud", "google", "discord")
-                    return allowed.none { host.contains(it, ignoreCase = true) }
+                    val url = request?.url ?: return false
+                    val host = url.host ?: return false
+                    val internalHosts = listOf("pokebonk.com", "solais.cloud")
+                    if (internalHosts.any { host.contains(it, ignoreCase = true) }) {
+                        return false
+                    }
+                    // Open external links (Discord, GitHub, external auth) in browser/external app
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, url)
+                        startActivity(intent)
+                    } catch (_: Exception) {}
+                    return true
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -147,9 +156,17 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl(gameUrl)
         webView.requestFocus()
 
+        var lastBackPressTime = 0L
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                sendEscapeKeyToGame()
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressTime < 2000L) {
+                    finish()
+                } else {
+                    lastBackPressTime = now
+                    sendEscapeKeyToGame()
+                    Toast.makeText(this@MainActivity, "Press back again to exit PokéBonk", Toast.LENGTH_SHORT).show()
+                }
             }
         })
     }
@@ -673,13 +690,24 @@ class MainActivity : ComponentActivity() {
                             return item;
                         }
 
+                        function onOutsideClick(e) {
+                            if (!container.contains(e.target)) {
+                                toggleMenu(false);
+                            }
+                        }
+
                         function toggleMenu(show) {
                             const isVisible = menuPanel.style.display === 'flex';
                             const next = typeof show === 'boolean' ? show : !isVisible;
                             menuPanel.style.display = next ? 'flex' : 'none';
                             menuToggleBtn.style.background = next ? '#ffd76d' : 'rgba(9, 17, 27, 0.90)';
                             menuToggleBtn.style.color = next ? '#1d1d1d' : '#ffd76d';
-                            if (next) updateMenuButtonText();
+                            if (next) {
+                                updateMenuButtonText();
+                                setTimeout(() => document.addEventListener('click', onOutsideClick), 10);
+                            } else {
+                                document.removeEventListener('click', onOutsideClick);
+                            }
                         }
 
                         menuToggleBtn.addEventListener('click', (e) => {
@@ -755,12 +783,6 @@ class MainActivity : ComponentActivity() {
                         container.appendChild(menuPanel);
                         document.body.appendChild(container);
 
-                        document.addEventListener('click', (e) => {
-                            if (!container.contains(e.target)) {
-                                toggleMenu(false);
-                            }
-                        });
-
                         return container;
                     })();
                 }
@@ -776,9 +798,10 @@ class MainActivity : ComponentActivity() {
      */
     private fun checkForLatestAndroidRelease(isUserInitiated: Boolean) {
         Thread {
+            var connection: HttpURLConnection? = null
             try {
                 val url = URL(releaseApiUrl)
-                val connection = (url.openConnection() as HttpURLConnection).apply {
+                connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     setRequestProperty("User-Agent", "PokeBonk-Android-Client")
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -972,6 +995,8 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this, "Unable to check for updates right now.", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } finally {
+                connection?.disconnect()
             }
         }.start()
     }
@@ -1181,29 +1206,25 @@ class MainActivity : ComponentActivity() {
                 val totalLength = connection.contentLength.toLong()
                 var downloadedBytes = 0L
 
-                val inputStream: InputStream = connection.inputStream
-                val outputStream = FileOutputStream(apkFile)
+                connection.inputStream.use { input ->
+                    FileOutputStream(apkFile).use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            downloadedBytes += bytesRead
 
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    downloadedBytes += bytesRead
-
-                    if (totalLength > 0) {
-                        val percent = ((downloadedBytes * 100) / totalLength).toInt()
-                        mainHandler.post {
-                            progressBar.progress = percent
-                            statusText.text = "$percent% downloaded (${downloadedBytes / 1024} KB / ${totalLength / 1024} KB)"
+                            if (totalLength > 0) {
+                                val percent = ((downloadedBytes * 100) / totalLength).toInt()
+                                mainHandler.post {
+                                    progressBar.progress = percent
+                                    statusText.text = "$percent% downloaded (${downloadedBytes / 1024} KB / ${totalLength / 1024} KB)"
+                                }
+                            }
                         }
+                        output.flush()
                     }
                 }
-
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-                connection.disconnect()
 
                 // Mark this asset as installed in preferences
                 val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -1223,6 +1244,8 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this, "Update download failed: ${e.message}", Toast.LENGTH_LONG).show()
                     mainHandler.postDelayed({ dismissUpdateBanner() }, 3500)
                 }
+            } finally {
+                connection?.disconnect()
             }
         }.start()
     }
