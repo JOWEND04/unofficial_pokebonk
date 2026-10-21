@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -48,8 +49,10 @@ class MainActivity : ComponentActivity() {
 
         checkForLatestAndroidRelease()
 
+        // Keep screen awake while playing on a Bluetooth controller
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // Render edge-to-edge across the camera cutout in landscape
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -81,7 +84,9 @@ class MainActivity : ComponentActivity() {
                 setSupportZoom(false)
                 builtInZoomControls = false
                 displayZoomControls = false
-                userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+                userAgentString =
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
             }
 
             webChromeClient = WebChromeClient()
@@ -97,22 +102,9 @@ class MainActivity : ComponentActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    view?.evaluateJavascript(
-                        """
-                        (function() {
-                            const style = document.createElement('style');
-                            style.innerHTML = `
-                                * { -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; outline: none !important; }
-                                html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; }
-                                body { touch-action: none; }
-                                canvas#game { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
-                            `;
-                            document.head.appendChild(style);
-                            window.focus();
-                        })();
-                        """.trimIndent(),
-                        null
-                    )
+
+                    injectControllerLayoutPatch(view)
+
                     view?.requestFocus()
                 }
             }
@@ -137,10 +129,12 @@ class MainActivity : ComponentActivity() {
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         val isGamepad = (event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK ||
             (event.source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+
         if (isGamepad) {
             if (!webView.hasFocus()) webView.requestFocus()
             if (webView.onGenericMotionEvent(event)) return true
         }
+
         return super.dispatchGenericMotionEvent(event)
     }
 
@@ -171,8 +165,48 @@ class MainActivity : ComponentActivity() {
                 return webView.dispatchKeyEvent(event)
             }
 
+            if (event.keyCode == KeyEvent.KEYCODE_MENU && event.action == KeyEvent.ACTION_DOWN) {
+                webView.evaluateJavascript(
+                    """
+                    (function() {
+                        const next = localStorage.getItem('pb_swap_abxy') !== 'true';
+                        localStorage.setItem('pb_swap_abxy', String(next));
+                        const toast = document.getElementById('pb-android-layout-toast') || (() => {
+                            const el = document.createElement('div');
+                            el.id = 'pb-android-layout-toast';
+                            Object.assign(el.style, {
+                                position: 'fixed',
+                                right: '18px',
+                                bottom: '18px',
+                                zIndex: '2147483647',
+                                background: 'rgba(0,0,0,0.75)',
+                                color: '#fff',
+                                border: '1px solid #ffd76d',
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                font: '600 12px/1.2 sans-serif',
+                                opacity: '0',
+                                transition: 'opacity 0.2s ease',
+                                pointerEvents: 'none'
+                            });
+                            document.body.appendChild(el);
+                            return el;
+                        })();
+
+                        toast.textContent = next ? 'Switch layout enabled' : 'Xbox layout enabled';
+                        toast.style.opacity = '1';
+                        clearTimeout(toast.__timer);
+                        toast.__timer = setTimeout(() => toast.style.opacity = '0', 1800);
+                    })();
+                    """.trimIndent(),
+                    null
+                )
+                return true
+            }
+
             if (webView.dispatchKeyEvent(event)) return true
         }
+
         return super.dispatchKeyEvent(event)
     }
 
@@ -225,6 +259,130 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun injectControllerLayoutPatch(view: WebView?) {
+        view?.evaluateJavascript(
+            """
+            (function() {
+                const STORAGE_KEY = 'pb_swap_abxy';
+
+                function showToast(msg) {
+                    const toast = document.getElementById('pb-android-layout-toast') || (() => {
+                        const el = document.createElement('div');
+                        el.id = 'pb-android-layout-toast';
+                        Object.assign(el.style, {
+                            position: 'fixed',
+                            right: '18px',
+                            bottom: '18px',
+                            zIndex: '2147483647',
+                            background: 'rgba(0,0,0,0.75)',
+                            color: '#fff',
+                            border: '1px solid #ffd76d',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            font: '600 12px/1.2 sans-serif',
+                            opacity: '0',
+                            transition: 'opacity 0.2s ease',
+                            pointerEvents: 'none'
+                        });
+                        document.body.appendChild(el);
+                        return el;
+                    })();
+
+                    toast.textContent = msg;
+                    toast.style.opacity = '1';
+                    clearTimeout(toast.__timer);
+                    toast.__timer = setTimeout(() => {
+                        toast.style.opacity = '0';
+                    }, 1800);
+                }
+
+                function applyLayoutPatch() {
+                    try {
+                        const nativeGetGamepads = navigator.getGamepads.bind(navigator);
+
+                        navigator.getGamepads = function () {
+                            const rawPads = nativeGetGamepads();
+                            const result = [null, null, null, null];
+
+                            for (let i = 0; i < rawPads.length; i++) {
+                                const pad = rawPads[i];
+                                if (!pad) continue;
+
+                                const mappedButtons = pad.buttons.map((b) => ({
+                                    pressed: !!(b && b.pressed),
+                                    touched: !!(b && b.touched),
+                                    value: Number((b && b.value) || 0)
+                                }));
+
+                                if (localStorage.getItem(STORAGE_KEY) === 'true' && mappedButtons.length >= 4) {
+                                    const b0 = mappedButtons[0];
+                                    mappedButtons[0] = mappedButtons[1];
+                                    mappedButtons[1] = b0;
+
+                                    const b2 = mappedButtons[2];
+                                    mappedButtons[2] = mappedButtons[3];
+                                    mappedButtons[3] = b2;
+                                }
+
+                                result[i] = {
+                                    id: pad.id,
+                                    index: pad.index,
+                                    connected: pad.connected,
+                                    timestamp: pad.timestamp,
+                                    mapping: 'standard',
+                                    axes: pad.axes ? pad.axes.map(v => Math.abs(v) < 0.08 ? 0 : v) : [],
+                                    buttons: mappedButtons,
+                                    vibrationActuator: pad.vibrationActuator || null,
+                                    hapticActuators: pad.hapticActuators || []
+                                };
+                            }
+
+                            return result;
+                        };
+                    } catch (e) {}
+                }
+
+                function toggleLayout() {
+                    const next = localStorage.getItem(STORAGE_KEY) !== 'true';
+                    localStorage.setItem(STORAGE_KEY, String(next));
+                    applyLayoutPatch();
+                    showToast(next ? 'Switch layout enabled' : 'Xbox layout enabled');
+                }
+
+                if (!window.__pbAndroidLayoutReady) {
+                    window.__pbAndroidLayoutReady = true;
+                    applyLayoutPatch();
+
+                    const toggle = document.getElementById('pb-android-layout-toggle') || (() => {
+                        const btn = document.createElement('button');
+                        btn.id = 'pb-android-layout-toggle';
+                        btn.textContent = 'Layout';
+                        Object.assign(btn.style, {
+                            position: 'fixed',
+                            right: '18px',
+                            top: '18px',
+                            zIndex: '2147483647',
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            border: '1px solid #ffd76d',
+                            background: 'rgba(0,0,0,0.75)',
+                            color: '#fff',
+                            font: '600 12px/1.2 sans-serif',
+                            cursor: 'pointer'
+                        });
+                        btn.onclick = toggleLayout;
+                        document.body.appendChild(btn);
+                        return btn;
+                    })();
+
+                    toggle.addEventListener('click', toggleLayout);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
     private fun checkForLatestAndroidRelease() {
         Thread {
             try {
@@ -245,8 +403,18 @@ class MainActivity : ComponentActivity() {
                     return@Thread
                 }
 
+                val currentVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+                val latestVersion = release.optString("tag_name", "").removePrefix("v")
+
+                if (latestVersion.isBlank() || currentVersion >= latestVersion) {
+                    return@Thread
+                }
+
+                val apkUrl = apkAsset.optString("browser_download_url")
+                if (apkUrl.isBlank()) return@Thread
+
                 runOnUiThread {
-                    promptToDownloadApk(apkAsset.optString("browser_download_url"))
+                    promptToDownloadApk(apkUrl)
                 }
             } catch (_: Exception) {
                 // Ignore network errors silently
