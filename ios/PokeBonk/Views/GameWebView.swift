@@ -81,6 +81,9 @@ struct GameWebView: UIViewRepresentable {
                 if let url = URL(string: "https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest") {
                     UIApplication.shared.open(url)
                 }
+            } else if action == "getVersion" {
+                let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.2"
+                webView?.evaluateJavaScript("if (window.PokeBonkNative && window.PokeBonkNative.setAppVersion) { window.PokeBonkNative.setAppVersion('\(ver)'); }", completionHandler: nil)
             }
         }
 

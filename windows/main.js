@@ -1,6 +1,7 @@
 const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const https = require('https');
 const { spawn } = require('child_process');
 
@@ -32,7 +33,16 @@ let mainWindow = null;
 let sleepBlockerId = null;
 let isUpdating = false;
 
-// Version comparison utility
+// Cleanup any leftover .old binary from a prior update on startup
+try {
+  const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  const oldExe = targetExe + '.old';
+  if (fs.existsSync(oldExe)) {
+    fs.unlinkSync(oldExe);
+  }
+} catch (_) {}
+
+// Semantic version comparison
 function compareVersions(v1, v2) {
   const p1 = (v1 || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
   const p2 = (v2 || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -46,79 +56,109 @@ function compareVersions(v1, v2) {
   return 0;
 }
 
-// HTTPS JSON Fetcher with redirect following
-function fetchJson(url) {
+// Redirect-following text fetcher
+function fetchText(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, {
-      headers: {
-        'User-Agent': 'PokeBonk-Windows/' + app.getVersion(),
-        'Accept': 'application/json'
-      },
-      timeout: 8000
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return fetchJson(res.headers.location).then(resolve).catch(reject);
+    function getUrl(curUrl, redirects = 0) {
+      if (redirects > 6) return reject(new Error('Too many redirects'));
+      let parsed;
+      try {
+        parsed = new URL(curUrl);
+      } catch (e) {
+        return reject(e);
       }
-      if (res.statusCode !== 200) {
-        return reject(new Error(`Server returned HTTP ${res.statusCode}`));
-      }
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(e);
+      const client = parsed.protocol === 'http:' ? http : https;
+      const req = client.get(curUrl, {
+        headers: {
+          'User-Agent': 'PokeBonk-Windows/' + app.getVersion(),
+          'Accept': '*/*'
+        },
+        timeout: 8000
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const next = new URL(res.headers.location, curUrl).href;
+          res.resume();
+          return getUrl(next, redirects + 1);
         }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Server returned HTTP ${res.statusCode}`));
+        }
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => resolve(body));
       });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Connection timed out'));
-    });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Connection timed out'));
+      });
+    }
+    getUrl(url, 0);
   });
 }
 
-// File Downloader with redirect following and progress
+// Redirect-following file downloader without opening write streams until 200 OK
 function downloadFile(url, destPath) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destPath);
-    const req = https.get(url, {
-      headers: {
-        'User-Agent': 'PokeBonk-Windows/' + app.getVersion()
-      },
-      timeout: 60000
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        try { fs.unlinkSync(destPath); } catch (_) {}
-        return downloadFile(res.headers.location, destPath).then(resolve).catch(reject);
+    function requestUrl(currentUrl, redirectCount = 0) {
+      if (redirectCount > 8) {
+        return reject(new Error('Too many redirects'));
       }
-      if (res.statusCode !== 200) {
-        file.close();
-        try { fs.unlinkSync(destPath); } catch (_) {}
-        return reject(new Error(`Download failed with HTTP ${res.statusCode}`));
+      let parsed;
+      try {
+        parsed = new URL(currentUrl);
+      } catch (e) {
+        return reject(e);
       }
+      const client = parsed.protocol === 'http:' ? http : https;
 
-      res.pipe(file);
-      file.on('finish', () => {
-        file.close(() => resolve(destPath));
+      const req = client.get(currentUrl, {
+        headers: {
+          'User-Agent': 'PokeBonk-Windows/' + app.getVersion(),
+          'Accept': '*/*'
+        },
+        timeout: 60000
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const nextUrl = new URL(res.headers.location, currentUrl).href;
+          res.resume();
+          return requestUrl(nextUrl, redirectCount + 1);
+        }
+
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Server returned HTTP ${res.statusCode}`));
+        }
+
+        // Open destination file stream ONLY once final 200 OK is reached
+        const file = fs.createWriteStream(destPath);
+
+        res.pipe(file);
+
+        file.on('finish', () => {
+          file.close((err) => {
+            if (err) reject(err);
+            else resolve(destPath);
+          });
+        });
+
+        file.on('error', (err) => {
+          file.close(() => {
+            try { fs.unlinkSync(destPath); } catch (_) {}
+            reject(err);
+          });
+        });
       });
-    });
 
-    req.on('error', (err) => {
-      file.close();
-      try { fs.unlinkSync(destPath); } catch (_) {}
-      reject(err);
-    });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Download timed out'));
+      });
+    }
 
-    req.on('timeout', () => {
-      req.destroy();
-      file.close();
-      try { fs.unlinkSync(destPath); } catch (_) {}
-      reject(new Error('Download timed out'));
-    });
+    requestUrl(url, 0);
   });
 }
 
@@ -130,20 +170,31 @@ async function checkWindowsUpdates(manual = false) {
     let remoteVersion = null;
     let downloadUrl = 'https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/PokeBonk.exe';
 
-    // 1. Try reading version.json directly first
+    // 1. Check latest.yml directly (authoritative Windows manifest, NO API rate limits)
     try {
-      const vJson = await fetchJson('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/version.json');
-      if (vJson.windows && vJson.windows.version) {
-        remoteVersion = vJson.windows.version;
-      } else if (vJson.versionName) {
-        remoteVersion = vJson.versionName;
+      const ymlText = await fetchText('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/latest.yml');
+      const match = ymlText.match(/version:\s*([0-9.]+)/i);
+      if (match && match[1]) {
+        remoteVersion = match[1].trim();
       }
     } catch (_) {}
 
-    // 2. Fallback to GitHub Releases API
+    // 2. Check version.json ONLY if windows specific version is present (avoid Android version collision)
     if (!remoteVersion) {
       try {
-        const release = await fetchJson('https://api.github.com/repos/JOWEND04/unofficial_pokebonk_app/releases/latest');
+        const vText = await fetchText('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/version.json');
+        const vJson = JSON.parse(vText);
+        if (vJson.windows && vJson.windows.version) {
+          remoteVersion = vJson.windows.version;
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fallback to GitHub Releases API
+    if (!remoteVersion) {
+      try {
+        const rText = await fetchText('https://api.github.com/repos/JOWEND04/unofficial_pokebonk_app/releases/latest');
+        const release = JSON.parse(rText);
         const tag = (release.tag_name || '').replace(/^v/i, '').trim();
         if (tag && tag !== 'latest') {
           remoteVersion = tag;
@@ -192,7 +243,7 @@ async function checkWindowsUpdates(manual = false) {
       const { response } = await dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: 'PokéBonk Update Available',
-        message: `PokéBonk v${remoteVersion} is now available!\n\nInstalled version: v${currentVersion}\nLatest version: v${remoteVersion}`,
+        message: `PokéBonk v${remoteVersion} is now available!\n\nInstalled: v${currentVersion}\nLatest: v${remoteVersion}`,
         detail: 'Would you like to download and install this update now?',
         buttons: ['Download & Update', 'View on GitHub', 'Later'],
         defaultId: 0,
@@ -207,8 +258,10 @@ async function checkWindowsUpdates(manual = false) {
       if (response === 0) {
         isUpdating = true;
         const tempExe = path.join(app.getPath('temp'), `PokeBonk_Update_v${remoteVersion}.exe`);
-        
-        // Show non-blocking download notification in UI
+
+        // Clean up any stale temp file first
+        try { if (fs.existsSync(tempExe)) fs.unlinkSync(tempExe); } catch (_) {}
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.executeJavaScript(`
             if (window.PokeBonkNative && window.PokeBonkNative.showToast) {
@@ -267,7 +320,7 @@ async function checkWindowsUpdates(manual = false) {
   }
 }
 
-// In-place binary replacer that works seamlessly for portable single-exe builds
+// In-place binary replacer using PowerShell runner to wait for PID and safely swap
 function applyUpdateAndRestart(newExePath) {
   if (!app.isPackaged) {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -282,43 +335,77 @@ function applyUpdateAndRestart(newExePath) {
   }
 
   const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  const batPath = path.join(app.getPath('temp'), `pokebonk_updater_${Date.now()}.bat`);
+  const ps1Path = path.join(app.getPath('temp'), `pokebonk_updater_${Date.now()}.ps1`);
 
-  const batContent = [
-    '@echo off',
-    'chcp 65001 >nul',
-    'timeout /t 1 /nobreak >nul',
-    'set RETRIES=0',
-    ':retry',
-    `move /y "${newExePath}" "${targetExe}" >nul 2>&1`,
-    'if errorlevel 1 (',
-    '    set /a RETRIES+=1',
-    '    if %RETRIES% geq 20 goto failed',
-    '    timeout /t 1 /nobreak >nul',
-    '    goto retry',
-    ')',
-    `start "" "${targetExe}"`,
-    'del "%~f0"',
-    'exit',
-    ':failed',
-    `start "" "${targetExe}"`,
-    'del "%~f0"',
-    'exit'
-  ].join('\r\n');
+  const psScript = `
+param(
+    [string]$TargetExe,
+    [string]$NewExe,
+    [int]$ParentPid
+)
+
+try {
+    Wait-Process -Id $ParentPid -Timeout 15 -ErrorAction SilentlyContinue
+} catch {}
+Start-Sleep -Milliseconds 500
+
+$applied = $false
+for ($i = 0; $i -lt 25; $i++) {
+    try {
+        if (Test-Path -LiteralPath $TargetExe) {
+            $oldBackup = "$TargetExe.old"
+            if (Test-Path -LiteralPath $oldBackup) {
+                Remove-Item -LiteralPath $oldBackup -Force -ErrorAction SilentlyContinue
+            }
+            try {
+                Rename-Item -LiteralPath $TargetExe -NewName "$([System.IO.Path]::GetFileName($TargetExe)).old" -Force -ErrorAction SilentlyContinue
+            } catch {}
+        }
+
+        Copy-Item -LiteralPath $NewExe -Destination $TargetExe -Force -ErrorAction Stop
+        $applied = $true
+        break
+    } catch {
+        Start-Sleep -Milliseconds 600
+    }
+}
+
+try { Remove-Item -LiteralPath $NewExe -Force -ErrorAction SilentlyContinue } catch {}
+try {
+    $oldBackup = "$TargetExe.old"
+    if (Test-Path -LiteralPath $oldBackup) {
+        Remove-Item -LiteralPath $oldBackup -Force -ErrorAction SilentlyContinue
+    }
+} catch {}
+
+if (Test-Path -LiteralPath $TargetExe) {
+    Start-Process -FilePath $TargetExe
+}
+
+try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch {}
+`;
 
   try {
-    fs.writeFileSync(batPath, batContent, 'utf8');
+    fs.writeFileSync(ps1Path, psScript, 'utf8');
 
-    const child = spawn('cmd.exe', ['/c', batPath], {
+    const child = spawn('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-WindowStyle', 'Hidden',
+      '-File', ps1Path,
+      '-TargetExe', targetExe,
+      '-NewExe', newExePath,
+      '-ParentPid', String(process.pid)
+    ], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true
     });
     child.unref();
 
-    app.quit();
+    app.exit(0);
   } catch (_) {
-    app.quit();
+    app.exit(0);
   }
 }
 
@@ -333,7 +420,7 @@ function createMainWindow() {
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#0e0a20',
+      color: 'transparent',
       symbolColor: '#ffcc33',
       height: 38
     },

@@ -24,6 +24,23 @@
       return 'web';
     })(),
 
+    defaultVersions: {
+      windows: '2.4.11',
+      android: '1.10',
+      ios: '1.0.2',
+      web: '2.5'
+    },
+
+    setAppVersion: function (ver) {
+      if (!ver) return;
+      const cleanVer = 'v' + String(ver).replace(/^v/i, '').trim();
+      const ids = ['pb-topleft-version-text', 'pb-version-display', 'pb-tb-version'];
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = cleanVer;
+      });
+    },
+
     checkForUpdates: function () {
       if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
         window.AndroidApp.checkForUpdatesManual();
@@ -68,13 +85,26 @@
       if (window.AndroidApp && window.AndroidApp.getAppVersion) {
         try {
           const v = window.AndroidApp.getAppVersion();
-          if (v) return cb(v);
+          if (v) {
+            NativeBridge.setAppVersion(v);
+            return cb(v);
+          }
         } catch (_) {}
       } else if (window.electronAPI && window.electronAPI.getAppVersion) {
-        window.electronAPI.getAppVersion().then(v => cb(v)).catch(() => cb(null));
-        return;
+        window.electronAPI.getAppVersion().then(v => {
+          if (v) {
+            NativeBridge.setAppVersion(v);
+            cb(v);
+          }
+        }).catch(() => {});
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pokeBonkIOS) {
+        try {
+          window.webkit.messageHandlers.pokeBonkIOS.postMessage({ action: 'getVersion' });
+        } catch (_) {}
       }
-      cb(null);
+      const def = NativeBridge.defaultVersions[NativeBridge.platform] || '2.5';
+      NativeBridge.setAppVersion(def);
+      cb(def);
     },
 
     showToast: function (msg) {
@@ -420,6 +450,10 @@
       hudContainer.style.top = savedY + 'px';
     }
 
+    // Trigger Row: contains floating toggle button + sleek discreet version pill
+    const triggerRow = document.createElement('div');
+    triggerRow.id = 'pb-hud-trigger-row';
+
     // Toggle Button
     const toggleBtn = document.createElement('button');
     toggleBtn.id = 'pb-hud-toggle';
@@ -430,6 +464,25 @@
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
       </svg>
     `;
+
+    // Discreet Top-Left Version Pill (Visible across Android, iOS, Windows, Web!)
+    const verPill = document.createElement('div');
+    verPill.id = 'pb-topleft-version';
+    verPill.className = 'pb-topleft-version';
+    verPill.title = 'PokéBonk Version (Click to check updates)';
+    const initialVer = NativeBridge.defaultVersions[NativeBridge.platform] || '2.5';
+    verPill.innerHTML = `
+      <span class="pb-ver-dot"></span>
+      <span id="pb-topleft-version-text">v${initialVer}</span>
+    `;
+
+    verPill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      NativeBridge.checkForUpdates();
+    });
+
+    triggerRow.appendChild(toggleBtn);
+    triggerRow.appendChild(verPill);
 
     // Draggable behavior
     let isDragging = false;
@@ -666,7 +719,7 @@
       toggleMenu();
     });
 
-    hudContainer.appendChild(toggleBtn);
+    hudContainer.appendChild(triggerRow);
     hudContainer.appendChild(menu);
     document.body.appendChild(hudContainer);
 
@@ -690,13 +743,14 @@
 
     document.body.classList.add('pb-has-titlebar');
 
+    const initialVer = NativeBridge.defaultVersions[NativeBridge.platform] || '2.5';
     const bar = document.createElement('div');
     bar.id = 'pb-desktop-titlebar';
     bar.innerHTML = `
       <div class="pb-tb-left">
         <span class="pb-pokeball-icon"></span>
         <span class="pb-tb-title">POKÉBONK</span>
-        <span id="pb-tb-version" class="pb-tb-version"></span>
+        <span id="pb-tb-version" class="pb-tb-version" title="PokéBonk Desktop Version (Click to check updates)">v${initialVer}</span>
       </div>
       <div class="pb-tb-drag-area"></div>
       <div class="pb-tb-right">
@@ -714,6 +768,11 @@
     `;
 
     document.body.prepend(bar);
+
+    document.getElementById('pb-tb-version')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      NativeBridge.checkForUpdates();
+    });
 
     NativeBridge.getAppVersion((ver) => {
       const vEl = document.getElementById('pb-tb-version');
