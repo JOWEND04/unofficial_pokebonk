@@ -73,6 +73,7 @@ def test_windows_integrity():
     assert 'createMainWindow' in main_js
     assert 'checkWindowsUpdates' in main_js
     assert 'applyUpdateAndRestart' in main_js
+    assert 'findLauncher' in main_js
     assert 'toggle-fullscreen' in main_js
     assert 'check-for-updates-manual' in main_js
 
@@ -163,6 +164,26 @@ def test_windows_integrity():
 
     print("[PASS] Windows code integrity and JS syntax checks passed")
 
+def test_launcher_integrity():
+    assert os.path.exists('launcher/src/Program.cs'), "launcher/src/Program.cs missing"
+    assert os.path.exists('launcher/build.ps1'), "launcher/build.ps1 missing"
+    assert os.path.exists('launcher/launcher.manifest'), "launcher/launcher.manifest missing"
+
+    with open('launcher/src/Program.cs', 'r', encoding='utf-8') as f:
+        src = f.read()
+
+    assert 'class LauncherForm' in src
+    assert 'StartDownload' in src
+    assert 'LaunchGame' in src
+    assert 'CheckForUpdatesAsync' in src
+    assert '#1a1630' in src
+    assert '#e94756' in src
+    # Ensure NO frosted gold
+    assert '#ffd766' not in src
+    assert '#ffcc33' not in src
+    assert 'gold' not in src.lower()
+    print("[PASS] Dedicated Launcher integrity and styling passed")
+
 def test_ios_integrity():
     with open('ios/PokeBonk/Resources/Info.plist', 'r', encoding='utf-8') as f:
         plist = f.read()
@@ -183,5 +204,6 @@ if __name__ == '__main__':
     test_js_css_sync()
     test_android_integrity()
     test_windows_integrity()
+    test_launcher_integrity()
     test_ios_integrity()
     print("\nALL REPOSITORY INTEGRITY AND BUG TESTS PASSED SUCCESSFULLY!")

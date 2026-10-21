@@ -9,8 +9,9 @@ High-performance native wrappers for **PokéBonk** on **Android**, **Windows**, 
 - **🎮 Seamless Controller Support:** Native Bluetooth and USB gamepad mapping (Xbox Wireless, PlayStation DualSense/DualShock, Nintendo Switch Pro/Joy-Con, Backbone, Razer Kishi, 8BitDo).
 - **🎯 Stick Sensitivity:** In-app sensitivity scaling (50% – 200%) configured directly in Settings or toggled via menu/shortcut.
 - **🔄 In-App Updaters & Multi-Platform Releases:**
+  - **Windows Launcher (`PokeBonk-Launcher.exe`):** Dedicated Riot-style gaming client launcher (~180 KB) with real-time download progress bar, automated zero-lock updates, binary verification, file repair, and 1-click launch into `%LOCALAPPDATA%\PokeBonk\game\PokeBonk.exe`.
+  - **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop game client with native controller support and sensitivity scaling.
   - **Android (`PokeBonk.apk`):** Direct APK download and installation without manual browser navigation or update loops.
-  - **Windows (`PokeBonk.exe`):** Background auto-updater powered by `electron-updater` and `latest.yml`.
   - **iOS (`PokeBonk.ipa`):** Sideloadable IPA packaged for iPhone and iPad with native `GameController` framework support.
 - **📱 Clean Mobile Experience:** Single floating menu (`⚙ Menu`) for touch/controller switching, reload, and updates.
 - **💻 Desktop Shortcuts:**

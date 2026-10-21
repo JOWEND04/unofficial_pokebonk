@@ -56,6 +56,23 @@ function compareVersions(v1, v2) {
   return 0;
 }
 
+function findLauncher() {
+  const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('appData'), '..', 'Local');
+  const candidates = [
+    path.join(localAppData, 'PokeBonk', 'PokeBonk-Launcher.exe'),
+    path.join(path.dirname(process.execPath), 'PokeBonk-Launcher.exe'),
+    path.join(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE || process.execPath), 'PokeBonk-Launcher.exe'),
+    path.join(app.getPath('desktop'), 'PokeBonk-Launcher.exe'),
+    path.join(app.getPath('downloads'), 'PokeBonk-Launcher.exe')
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch (_) {}
+  }
+  return null;
+}
+
 // Redirect-following text fetcher
 function fetchText(url) {
   return new Promise((resolve, reject) => {
@@ -247,22 +264,66 @@ async function checkWindowsUpdates(manual = false) {
 
     // Prompt user for update
     if (mainWindow && !mainWindow.isDestroyed()) {
+      const launcherPath = findLauncher();
+      const buttons = launcherPath
+        ? ['Update via Launcher (Recommended)', 'Update Directly', 'View on GitHub', 'Later']
+        : ['Get Launcher (Recommended)', 'Update Directly', 'View on GitHub', 'Later'];
+
       const { response } = await dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: 'PokéBonk Update Available',
         message: `PokéBonk v${remoteVersion} is now available!\n\nInstalled: v${currentVersion}\nLatest: v${remoteVersion}`,
-        detail: 'Would you like to download and install this update now?',
-        buttons: ['Download & Update', 'View on GitHub', 'Later'],
+        detail: launcherPath
+          ? 'Use the PokéBonk Launcher for an instant, seamless background update without file conflicts.'
+          : 'The PokéBonk Launcher provides instant one-click updating with a download progress bar and zero lock errors.',
+        buttons: buttons,
         defaultId: 0,
-        cancelId: 2
+        cancelId: 3
       });
 
-      if (response === 1) {
+      if (response === 2) {
         shell.openExternal('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest');
         return;
       }
 
       if (response === 0) {
+        if (launcherPath) {
+          try {
+            const child = spawn(launcherPath, [], { detached: true, stdio: 'ignore' });
+            child.unref();
+            app.quit();
+            return;
+          } catch (_) {}
+        }
+
+        // Download launcher to %LOCALAPPDATA%\PokeBonk\PokeBonk-Launcher.exe
+        const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('appData'), '..', 'Local');
+        const launcherDir = path.join(localAppData, 'PokeBonk');
+        try { if (!fs.existsSync(launcherDir)) fs.mkdirSync(launcherDir, { recursive: true }); } catch (_) {}
+        const targetLauncher = path.join(launcherDir, 'PokeBonk-Launcher.exe');
+        const launcherUrl = 'https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/PokeBonk-Launcher.exe';
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.executeJavaScript(`
+            if (window.PokeBonkNative && window.PokeBonkNative.showToast) {
+              window.PokeBonkNative.showToast('Opening PokéBonk Launcher…');
+            }
+          `).catch(() => {});
+        }
+
+        try {
+          await downloadFile(launcherUrl, targetLauncher);
+          const child = spawn(targetLauncher, [], { detached: true, stdio: 'ignore' });
+          child.unref();
+          app.quit();
+          return;
+        } catch (_) {
+          // If downloading launcher failed, fall through to in-place updater
+        }
+      }
+
+      // Direct in-place updater (either response === 1 or fallback from response === 0)
+      if (response === 1 || response === 0) {
         isUpdating = true;
         const tempExe = path.join(app.getPath('temp'), `PokeBonk_Update_v${remoteVersion}.exe`);
 
@@ -354,10 +415,20 @@ param(
 try {
     Wait-Process -Id $ParentPid -Timeout 15 -ErrorAction SilentlyContinue
 } catch {}
-Start-Sleep -Milliseconds 500
+Start-Sleep -Milliseconds 600
+
+# Ensure lingering wrapper processes release lock
+for ($p = 0; $p -lt 6; $p++) {
+    $running = Get-Process -Name "PokeBonk" -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID }
+    if ($running) {
+        Start-Sleep -Milliseconds 500
+    } else {
+        break
+    }
+}
 
 $applied = $false
-for ($i = 0; $i -lt 25; $i++) {
+for ($i = 0; $i -lt 30; $i++) {
     try {
         if (Test-Path -LiteralPath $TargetExe) {
             $oldBackup = "$TargetExe.old"

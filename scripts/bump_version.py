@@ -95,6 +95,20 @@ def main():
             with open(windows_pkg_path, 'w', encoding='utf-8', newline='\n') as f:
                 json.dump(pkg_data, f, indent=2)
                 f.write('\n')
+
+        launcher_src_path = os.path.join(repo_root, 'launcher', 'src', 'Program.cs')
+        if os.path.exists(launcher_src_path):
+            with open(launcher_src_path, 'r', encoding='utf-8') as f:
+                launcher_code = f.read()
+            updated_launcher = re.sub(
+                r'launcherVersion\s*=\s*"[^"]+"',
+                f'launcherVersion = "{new_win_version}"',
+                launcher_code
+            )
+            if not args.dry_run:
+                with open(launcher_src_path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(updated_launcher)
+
         bumped_windows = True
         print(f"[Windows] Bumped version: {old_win} -> {new_win_version}")
 

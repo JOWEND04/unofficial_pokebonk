@@ -270,7 +270,8 @@ jobs:
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
             * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support (v${{ env.VERSION_NAME }}, build ${{ env.VERSION_CODE }}).
-            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             PokeBonk.apk
@@ -348,7 +349,12 @@ jobs:
             Write-Error "dist/PokeBonk.exe not found!"
           }
 
-      - name: Publish Raw EXE to GitHub Releases
+      - name: Build Dedicated PokéBonk Launcher (Riot-Style Client)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File launcher/build.ps1
+
+      - name: Publish Raw EXE and Launcher to GitHub Releases
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -358,10 +364,12 @@ jobs:
           body: |
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
             * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
-            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
+            windows/dist/PokeBonk-Launcher.exe
             windows/dist/PokeBonk.exe
             windows/dist/latest.yml
             windows/dist/version.json
@@ -419,8 +427,9 @@ jobs:
           body: |
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
             * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
-            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             PokeBonk.ipa
