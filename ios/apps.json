@@ -1,18 +1,18 @@
 {
-  "name": "PokéBonk Community Source",
+  "name": "Pok\u00e9Bonk Community Source",
   "identifier": "com.unofficial.pokebonk.source",
   "apps": [
     {
-      "name": "PokéBonk",
+      "name": "Pok\u00e9Bonk",
       "bundleIdentifier": "com.unofficial.pokebonk",
-      "developerName": "PokéBonk Community",
-      "subtitle": "Unofficial Native PokéBonk Client",
-      "localizedDescription": "Native PokéBonk client for iOS with Bluetooth gamepad support (Xbox, PlayStation, Nintendo Switch Pro/Joy-Con, Backbone), stick sensitivity controls, and edge-to-edge fullscreen gameplay.",
+      "developerName": "Pok\u00e9Bonk Community",
+      "subtitle": "Unofficial Native Pok\u00e9Bonk Client",
+      "localizedDescription": "Native Pok\u00e9Bonk client for iOS with Bluetooth gamepad support (Xbox, PlayStation, Nintendo Switch Pro/Joy-Con, Backbone), stick sensitivity controls, and edge-to-edge fullscreen gameplay.",
       "iconURL": "https://raw.githubusercontent.com/JOWEND04/unofficial_pokebonk_app/main/ios/PokeBonk/Resources/Assets.xcassets/AppIcon.appiconset/icon-180.png",
       "tintColor": "FFD76D",
       "versions": [
         {
-          "version": "1.0.0",
+          "version": "1.0.3",
           "date": "2026-10-21",
           "size": 2500000,
           "downloadURL": "https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/PokeBonk.ipa",
