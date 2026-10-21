@@ -110,6 +110,7 @@ class MainActivity : ComponentActivity() {
                 setSupportZoom(false)
                 builtInZoomControls = false
                 displayZoomControls = false
+                offscreenPreRaster = true
 
                 // Use the device's native mobile Chrome User-Agent (stripping WebView-specific '; wv' and 'Version/4.0 ')
                 // so pokebonk.com renders its true mobile/touch layout and viewport without squishing or overlapping
@@ -597,7 +598,7 @@ class MainActivity : ComponentActivity() {
                                 const span = row.querySelector('span');
                                 if (span) {
                                     const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
-                                    span.innerHTML = `${isEn ? 'Stick & Camera Sensitivity' : 'Sensibilidad de sticks y cámara'}<small>${isEn ? 'Analog stick responsiveness & camera rotation speed (0.2x – 3.0x)' : 'Velocidad de giro del stick analógico y cámara (0.2x – 3.0x)'}</small>`;
+                                    span.innerHTML = (isEn ? 'Stick & Camera Sensitivity' : 'Sensibilidad de sticks y cámara') + '<small>' + (isEn ? 'Analog stick responsiveness & camera rotation speed (0.2x – 3.0x)' : 'Velocidad de giro del stick analógico y cámara (0.2x – 3.0x)') + '</small>';
                                 }
 
                                 const savedSens = getStickSensitivity();
@@ -631,8 +632,24 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    const observer = new MutationObserver(() => {
-                        patchSettings();
+                    let patchDebounce = null;
+                    const observer = new MutationObserver((mutations) => {
+                        const hasSettings = mutations.some(m => {
+                            for (let i = 0; i < m.addedNodes.length; i++) {
+                                const node = m.addedNodes[i];
+                                if (node.nodeType === 1 && (
+                                    (node.classList && (node.classList.contains('modal') || node.classList.contains('st-row'))) ||
+                                    (node.querySelector && node.querySelector('.modal, .st-row'))
+                                )) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        });
+                        if (hasSettings) {
+                            clearTimeout(patchDebounce);
+                            patchDebounce = setTimeout(patchSettings, 60);
+                        }
                     });
                     observer.observe(document.body, { childList: true, subtree: true });
                     patchSettings();
@@ -923,8 +940,9 @@ class MainActivity : ComponentActivity() {
                 if (versionJsonAsset != null) {
                     val vUrl = versionJsonAsset.optString("browser_download_url")
                     if (vUrl.isNotBlank()) {
+                        var vConn: HttpURLConnection? = null
                         try {
-                            val vConn = (URL(vUrl).openConnection() as HttpURLConnection).apply {
+                            vConn = (URL(vUrl).openConnection() as HttpURLConnection).apply {
                                 setRequestProperty("User-Agent", "PokeBonk-Android-Client")
                                 connectTimeout = 8000
                                 readTimeout = 8000
@@ -949,7 +967,10 @@ class MainActivity : ComponentActivity() {
                                     displayVersion = "v$remoteVersionName"
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (_: Exception) {
+                        } finally {
+                            vConn?.disconnect()
+                        }
                     }
                 }
 

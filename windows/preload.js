@@ -305,8 +305,21 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const observer = new MutationObserver(() => {
-            patchSettings();
+        let patchDebounce = null;
+        const observer = new MutationObserver((mutations) => {
+            const hasSettings = mutations.some(m => {
+                for (let i = 0; i < m.addedNodes.length; i++) {
+                    const node = m.addedNodes[i];
+                    if (node.nodeType === 1 && (node.classList?.contains('modal') || node.classList?.contains('st-row') || node.querySelector?.('.modal, .st-row'))) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (hasSettings) {
+                clearTimeout(patchDebounce);
+                patchDebounce = setTimeout(patchSettings, 60);
+            }
         });
         observer.observe(document.body, { childList: true, subtree: true });
         patchSettings();
