@@ -22,7 +22,7 @@
     "publish": {
       "provider": "github",
       "owner": "JOWEND04",
-      "repo": "unofficial_pokebonk",
+      "repo": "unofficial_pokebonk_app",
       "releaseType": "release"
     }
   },

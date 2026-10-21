@@ -37,7 +37,7 @@ autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.setFeedURL({
   provider: 'github',
   owner: 'JOWEND04',
-  repo: 'unofficial_pokebonk',
+  repo: 'unofficial_pokebonk_app',
   private: false,
   releaseType: 'release'
 });

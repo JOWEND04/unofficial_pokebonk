@@ -42,6 +42,21 @@ jobs:
       - name: Rename APK for Clean Download
         run: cp android/app/build/outputs/apk/release/app-release.apk PokeBonk.apk
 
+      - name: Extract Version Info & Create Metadata
+        run: |
+          VERSION_NAME=$(grep 'versionName =' android/app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode =' android/app/build.gradle.kts | head -1 | sed -E 's/.*= *([0-9]+).*/\1/')
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          cat << EOF > version.json
+          {
+            "versionName": "$VERSION_NAME",
+            "versionCode": $VERSION_CODE,
+            "commit": "${{ github.sha }}",
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
       - name: Publish Raw APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
@@ -51,7 +66,10 @@ jobs:
             ### Direct Android Installation
             Tap **`PokeBonk.apk`** under **Assets** below to download and install directly on your Android device (no `.zip` extraction required).
             
+            * **Version:** ${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})
             * **Last Built:** Commit `${{ github.sha }}`
-          files: PokeBonk.apk
+          files: |
+            PokeBonk.apk
+            version.json
           prerelease: false
           make_latest: true

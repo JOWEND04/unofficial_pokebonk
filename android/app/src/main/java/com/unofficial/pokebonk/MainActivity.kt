@@ -1,16 +1,19 @@
 package com.unofficial.pokebonk
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -18,11 +21,18 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.FileProvider
@@ -30,24 +40,32 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var rootLayout: FrameLayout
     private lateinit var webView: WebView
-    private val gameUrl = "https://pokebonk.com"
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val releaseApiUrl = "https://api.github.com/repos/JOWEND04/unofficial_pokebonk/releases/latest"
-    private val apkFileName = "PokeBonk.apk"
-    private var downloadId: Long = 0L
-    private var pendingInstallUri: Uri? = null
+    private val gameUrl = "https://pokebonk.com"
+    private val releaseApiUrl = "https://api.github.com/repos/JOWEND04/unofficial_pokebonk_app/releases/latest"
+
+    private val prefsName = "pokebonk_app_prefs"
+    private val prefLastInstalledAssetId = "last_installed_apk_asset_id"
+    private val prefDismissedReleaseId = "dismissed_release_id"
+
+    private var pendingInstallFile: File? = null
+    private var updateBannerView: View? = null
+    private var isDownloading = false
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        checkForLatestAndroidRelease()
 
         // Keep screen awake while playing on a Bluetooth controller
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -60,12 +78,20 @@ class MainActivity : ComponentActivity() {
 
         enableImmersiveFullscreen()
 
-        webView = WebView(this).apply {
+        rootLayout = FrameLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(android.graphics.Color.BLACK)
+            setBackgroundColor(Color.BLACK)
+        }
+
+        webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.BLACK)
 
             isFocusable = true
             isFocusableInTouchMode = true
@@ -102,12 +128,12 @@ class MainActivity : ComponentActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-
                     injectControllerLayoutPatch(view)
-
                     view?.requestFocus()
                 }
             }
+
+            addJavascriptInterface(AndroidBridge(), "AndroidApp")
         }
 
         CookieManager.getInstance().apply {
@@ -115,7 +141,9 @@ class MainActivity : ComponentActivity() {
             setAcceptThirdPartyCookies(webView, true)
         }
 
-        setContentView(webView)
+        rootLayout.addView(webView)
+        setContentView(rootLayout)
+
         webView.loadUrl(gameUrl)
         webView.requestFocus()
 
@@ -124,6 +152,29 @@ class MainActivity : ComponentActivity() {
                 sendEscapeKeyToGame()
             }
         })
+
+        // Check for wrapper updates non-intrusively in background
+        checkForLatestAndroidRelease(isUserInitiated = false)
+    }
+
+    inner class AndroidBridge {
+        @JavascriptInterface
+        fun reloadGame() {
+            mainHandler.post {
+                webView.clearCache(true)
+                CookieManager.getInstance().flush()
+                webView.reload()
+                Toast.makeText(this@MainActivity, "Game reloaded with latest live build", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        @JavascriptInterface
+        fun checkForUpdatesManual() {
+            mainHandler.post {
+                Toast.makeText(this@MainActivity, "Checking for app updates…", Toast.LENGTH_SHORT).show()
+                checkForLatestAndroidRelease(isUserInitiated = true)
+            }
+        }
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
@@ -228,6 +279,17 @@ class MainActivity : ComponentActivity() {
         webView.resumeTimers()
         enableImmersiveFullscreen()
         webView.requestFocus()
+
+        // If returned from unknown sources permission setting, continue installation
+        if (pendingInstallFile != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (packageManager.canRequestPackageInstalls()) {
+                val file = pendingInstallFile
+                pendingInstallFile = null
+                if (file != null && file.exists()) {
+                    launchPackageInstaller(file)
+                }
+            }
+        }
     }
 
     override fun onPause() {
@@ -238,6 +300,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        dismissUpdateBanner()
         webView.destroy()
         super.onDestroy()
     }
@@ -274,11 +337,11 @@ class MainActivity : ComponentActivity() {
                             right: '18px',
                             bottom: '18px',
                             zIndex: '2147483647',
-                            background: 'rgba(0,0,0,0.75)',
+                            background: 'rgba(0,0,0,0.85)',
                             color: '#fff',
                             border: '1px solid #ffd76d',
                             borderRadius: '10px',
-                            padding: '10px 12px',
+                            padding: '10px 14px',
                             font: '600 12px/1.2 sans-serif',
                             opacity: '0',
                             transition: 'opacity 0.2s ease',
@@ -346,36 +409,65 @@ class MainActivity : ComponentActivity() {
                     const next = localStorage.getItem(STORAGE_KEY) !== 'true';
                     localStorage.setItem(STORAGE_KEY, String(next));
                     applyLayoutPatch();
-                    showToast(next ? 'Switch layout enabled' : 'Xbox layout enabled');
+                    showToast(next ? 'Switch layout enabled (East = A)' : 'Xbox layout enabled (South = A)');
                 }
 
                 if (!window.__pbAndroidLayoutReady) {
                     window.__pbAndroidLayoutReady = true;
                     applyLayoutPatch();
 
-                    const toggle = document.getElementById('pb-android-layout-toggle') || (() => {
-                        const btn = document.createElement('button');
-                        btn.id = 'pb-android-layout-toggle';
-                        btn.textContent = 'Layout';
-                        Object.assign(btn.style, {
+                    const bar = document.getElementById('pb-android-toolbar') || (() => {
+                        const container = document.createElement('div');
+                        container.id = 'pb-android-toolbar';
+                        Object.assign(container.style, {
                             position: 'fixed',
-                            right: '18px',
-                            top: '18px',
+                            right: '16px',
+                            top: '16px',
                             zIndex: '2147483647',
-                            padding: '10px 12px',
-                            borderRadius: '10px',
-                            border: '1px solid #ffd76d',
-                            background: 'rgba(0,0,0,0.75)',
-                            color: '#fff',
-                            font: '600 12px/1.2 sans-serif',
-                            cursor: 'pointer'
+                            display: 'flex',
+                            gap: '8px',
+                            alignItems: 'center'
                         });
-                        btn.onclick = toggleLayout;
-                        document.body.appendChild(btn);
-                        return btn;
-                    })();
 
-                    toggle.addEventListener('click', toggleLayout);
+                        function createButton(label, title, onClick) {
+                            const btn = document.createElement('button');
+                            btn.textContent = label;
+                            btn.title = title;
+                            Object.assign(btn.style, {
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid #ffd76d',
+                                background: 'rgba(9, 17, 27, 0.85)',
+                                color: '#edf4ff',
+                                font: '600 12px/1.2 sans-serif',
+                                cursor: 'pointer',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                backdropFilter: 'blur(4px)'
+                            });
+                            btn.onclick = onClick;
+                            return btn;
+                        }
+
+                        const layoutBtn = createButton('Layout', 'Toggle Controller Layout (Xbox / Switch)', toggleLayout);
+                        const reloadBtn = createButton('Reload Game', 'Fetch latest web game updates', () => {
+                            if (window.AndroidApp && window.AndroidApp.reloadGame) {
+                                window.AndroidApp.reloadGame();
+                            } else {
+                                location.reload(true);
+                            }
+                        });
+                        const updateBtn = createButton('Check Updates', 'Check for native app updates', () => {
+                            if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
+                                window.AndroidApp.checkForUpdatesManual();
+                            }
+                        });
+
+                        container.appendChild(layoutBtn);
+                        container.appendChild(reloadBtn);
+                        container.appendChild(updateBtn);
+                        document.body.appendChild(container);
+                        return container;
+                    })();
                 }
             })();
             """.trimIndent(),
@@ -383,89 +475,528 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun checkForLatestAndroidRelease() {
+    /**
+     * Checks GitHub releases for a genuine new version.
+     * Prevents infinite update cycles caused by comparing version string "1.1" >= "latest".
+     */
+    private fun checkForLatestAndroidRelease(isUserInitiated: Boolean) {
         Thread {
             try {
-                val json = URL(releaseApiUrl).readText()
+                val url = URL(releaseApiUrl)
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "PokeBonk-Android-Client")
+                    setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    instanceFollowRedirects = true
+                }
+
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    if (isUserInitiated) {
+                        mainHandler.post {
+                            Toast.makeText(this, "Could not reach update server (${connection.responseCode})", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return@Thread
+                }
+
+                val json = connection.inputStream.bufferedReader().use { it.readText() }
                 val release = JSONObject(json)
+                val releaseId = release.optLong("id", 0L)
+                val tagName = release.optString("tag_name", "").trim()
+                val releaseBody = release.optString("body", "")
                 val assets = release.optJSONArray("assets") ?: return@Thread
 
                 var apkAsset: JSONObject? = null
+                var versionJsonAsset: JSONObject? = null
+
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
-                    if (asset.optString("name").equals("PokeBonk.apk", ignoreCase = true)) {
+                    val name = asset.optString("name")
+                    if (name.equals("PokeBonk.apk", ignoreCase = true)) {
                         apkAsset = asset
-                        break
+                    } else if (name.equals("version.json", ignoreCase = true)) {
+                        versionJsonAsset = asset
                     }
                 }
 
                 if (apkAsset == null) {
+                    if (isUserInitiated) {
+                        mainHandler.post {
+                            Toast.makeText(this, "No APK asset found in latest release.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     return@Thread
                 }
 
-                val currentVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
-                val latestVersion = release.optString("tag_name", "").removePrefix("v")
+                val apkAssetId = apkAsset.optLong("id", 0L)
+                val apkDownloadUrl = apkAsset.optString("browser_download_url")
+                if (apkDownloadUrl.isBlank()) return@Thread
 
-                if (latestVersion.isBlank() || currentVersion >= latestVersion) {
+                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0)
+                }
+
+                val currentVersionName = packageInfo.versionName ?: "1.0"
+                val currentVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    packageInfo.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageInfo.versionCode.toLong()
+                }
+
+                val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                val lastInstalledAssetId = prefs.getLong(prefLastInstalledAssetId, 0L)
+                val dismissedReleaseId = prefs.getLong(prefDismissedReleaseId, 0L)
+
+                // 1. If user already installed this exact asset, skip
+                if (apkAssetId != 0L && apkAssetId == lastInstalledAssetId) {
+                    if (isUserInitiated) {
+                        mainHandler.post {
+                            Toast.makeText(this, "PokéBonk is up to date (Build #$currentVersionCode)!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     return@Thread
                 }
 
-                val apkUrl = apkAsset.optString("browser_download_url")
-                if (apkUrl.isBlank()) return@Thread
-
-                runOnUiThread {
-                    promptToDownloadApk(apkUrl)
+                // 2. If non-user-initiated and user dismissed this release, skip
+                if (!isUserInitiated && releaseId != 0L && releaseId == dismissedReleaseId) {
+                    return@Thread
                 }
+
+                var isUpdateAvailable = false
+                var displayVersion = tagName
+
+                // Check version.json asset if present
+                if (versionJsonAsset != null) {
+                    val vUrl = versionJsonAsset.optString("browser_download_url")
+                    if (vUrl.isNotBlank()) {
+                        try {
+                            val vConn = (URL(vUrl).openConnection() as HttpURLConnection).apply {
+                                setRequestProperty("User-Agent", "PokeBonk-Android-Client")
+                                connectTimeout = 8000
+                                readTimeout = 8000
+                                instanceFollowRedirects = true
+                            }
+                            if (vConn.responseCode == HttpURLConnection.HTTP_OK) {
+                                val vText = vConn.inputStream.bufferedReader().use { it.readText() }
+                                val vObj = JSONObject(vText)
+                                val remoteVersionCode = vObj.optLong("versionCode", -1L)
+                                val remoteVersionName = vObj.optString("versionName", "")
+
+                                if (remoteVersionCode > 0) {
+                                    if (remoteVersionCode > currentVersionCode) {
+                                        isUpdateAvailable = true
+                                        displayVersion = if (remoteVersionName.isNotBlank()) "v$remoteVersionName" else "Build #$remoteVersionCode"
+                                    } else {
+                                        // Remote versionCode is less than or equal to current build
+                                        isUpdateAvailable = false
+                                    }
+                                } else if (remoteVersionName.isNotBlank()) {
+                                    isUpdateAvailable = isNewerVersion(currentVersionName, remoteVersionName)
+                                    displayVersion = "v$remoteVersionName"
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                // If not determined via version.json, check release body for version metadata
+                if (!isUpdateAvailable && versionJsonAsset == null) {
+                    val codeRegex = Regex("""(?:Build|VersionCode|Code):\s*([0-9]+)""", RegexOption.IGNORE_CASE)
+                    val codeMatch = codeRegex.find(releaseBody)
+                    if (codeMatch != null) {
+                        val bodyCode = codeMatch.groupValues[1].toLongOrNull() ?: -1L
+                        if (bodyCode > 0) {
+                            if (bodyCode > currentVersionCode) {
+                                isUpdateAvailable = true
+                                displayVersion = "Build #$bodyCode"
+                            }
+                        }
+                    }
+
+                    if (!isUpdateAvailable) {
+                        val verRegex = Regex("""(?:Version):\s*v?([0-9.]+)""", RegexOption.IGNORE_CASE)
+                        val verMatch = verRegex.find(releaseBody)
+                        if (verMatch != null) {
+                            val bodyVer = verMatch.groupValues[1]
+                            if (isNewerVersion(currentVersionName, bodyVer)) {
+                                isUpdateAvailable = true
+                                displayVersion = "v$bodyVer"
+                            }
+                        }
+                    }
+                }
+
+                // If tag is a semver tag (e.g. v1.2, 2.0.0) and not "latest"
+                if (!isUpdateAvailable && !tagName.equals("latest", ignoreCase = true) && tagName.isNotBlank()) {
+                    isUpdateAvailable = isNewerVersion(currentVersionName, tagName)
+                    if (isUpdateAvailable) {
+                        displayVersion = tagName
+                    }
+                }
+
+                // Special handling for rolling "latest" tag:
+                // If tag is "latest" and no higher version is explicitly stated:
+                // If the app was just installed (lastInstalledAssetId == 0), record this asset as current so it never loops.
+                if (tagName.equals("latest", ignoreCase = true) && !isUpdateAvailable) {
+                    if (lastInstalledAssetId == 0L) {
+                        // First run after clean install: mark current asset as installed
+                        prefs.edit().putLong(prefLastInstalledAssetId, apkAssetId).apply()
+                    }
+
+                    if (isUserInitiated) {
+                        mainHandler.post {
+                            Toast.makeText(this, "PokéBonk is up to date (v$currentVersionName)!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return@Thread
+                }
+
+                if (!isUpdateAvailable) {
+                    if (isUserInitiated) {
+                        mainHandler.post {
+                            Toast.makeText(this, "You are on the latest version (v$currentVersionName)!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return@Thread
+                }
+
+                // Present in-app update banner
+                mainHandler.post {
+                    showInAppUpdateBanner(displayVersion, apkDownloadUrl, apkAssetId, releaseId)
+                }
+
             } catch (_: Exception) {
-                // Ignore network errors silently
+                if (isUserInitiated) {
+                    mainHandler.post {
+                        Toast.makeText(this, "Unable to check for updates right now.", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }.start()
     }
 
-    private fun promptToDownloadApk(apkUrl: String) {
-        val apkUri = Uri.parse(apkUrl)
-        val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
-        if (file.exists()) {
-            file.delete()
+    /**
+     * Displays a clean, non-intrusive in-app update card instead of immediately
+     * hijacking the device with an external package installer.
+     */
+    private fun showInAppUpdateBanner(
+        newVersionName: String,
+        downloadUrl: String,
+        apkAssetId: Long,
+        releaseId: Long
+    ) {
+        if (isFinishing || isDestroyed || isDownloading) return
+
+        dismissUpdateBanner()
+
+        val dp = { value: Int ->
+            TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                value.toFloat(),
+                resources.displayMetrics
+            ).toInt()
         }
 
-        val request = DownloadManager.Request(apkUri)
-            .setTitle("PokéBonk update")
-            .setDescription("Downloading latest PokeBonk APK")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(this@MainActivity, Environment.DIRECTORY_DOWNLOADS, "pokebonk-update.apk")
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val padH = dp(16)
+            val padV = dp(12)
+            setPadding(padH, padV, padH, padV)
 
-        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        downloadId = dm.enqueue(request)
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#E6111C2B"))
+                setStroke(dp(2), Color.parseColor("#FFD76D"))
+                cornerRadius = dp(14).toFloat()
+            }
+            background = bg
 
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                val action = intent.action
-                if (action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
-                    val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                    if (id == downloadId) {
-                        val downloadedFile = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), apkFileName)
-                        if (downloadedFile.exists()) {
-                            pendingInstallUri = FileProvider.getUriForFile(
-                                this@MainActivity,
-                                "${packageName}.fileprovider",
-                                downloadedFile
-                            )
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                topMargin = dp(20)
+            }
+            elevation = dp(10).toFloat()
+        }
 
-                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(pendingInstallUri, "application/vnd.android.package-archive")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(installIntent)
+        val titleView = TextView(this).apply {
+            text = "🎮 PokéBonk Update Available"
+            setTextColor(Color.parseColor("#FFD76D"))
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+        }
+        card.addView(titleView)
+
+        val descView = TextView(this).apply {
+            text = "New native wrapper update ($newVersionName) is ready."
+            setTextColor(Color.parseColor("#EDF4FF"))
+            textSize = 12f
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        card.addView(descView)
+
+        val actionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        val laterBtn = Button(this).apply {
+            text = "Later"
+            setTextColor(Color.parseColor("#9BB6D0"))
+            textSize = 12f
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            setOnClickListener {
+                val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                prefs.edit().putLong(prefDismissedReleaseId, releaseId).apply()
+                dismissUpdateBanner()
+            }
+        }
+        actionsRow.addView(laterBtn)
+
+        val updateBtn = Button(this).apply {
+            text = "Update Now"
+            setTextColor(Color.parseColor("#1D1D1D"))
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD)
+            val btnBg = GradientDrawable().apply {
+                setColor(Color.parseColor("#FFCF4A"))
+                cornerRadius = dp(8).toFloat()
+            }
+            background = btnBg
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setOnClickListener {
+                startInAppDownload(card, downloadUrl, apkAssetId)
+            }
+        }
+        actionsRow.addView(updateBtn)
+
+        card.addView(actionsRow)
+
+        updateBannerView = card
+        rootLayout.addView(card)
+    }
+
+    private fun dismissUpdateBanner() {
+        updateBannerView?.let {
+            rootLayout.removeView(it)
+            updateBannerView = null
+        }
+    }
+
+    /**
+     * Handles downloading entirely in-app with streaming HTTP and progress indication,
+     * without cluttering system notifications or downloading multiple times.
+     */
+    private fun startInAppDownload(container: LinearLayout, downloadUrl: String, apkAssetId: Long) {
+        if (isDownloading) return
+        isDownloading = true
+
+        val dp = { value: Int ->
+            TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                value.toFloat(),
+                resources.displayMetrics
+            ).toInt()
+        }
+
+        container.removeAllViews()
+
+        val progressTitle = TextView(this).apply {
+            text = "Downloading PokéBonk Update…"
+            setTextColor(Color.parseColor("#FFD76D"))
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+        }
+        container.addView(progressTitle)
+
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+            progress = 0
+            layoutParams = LinearLayout.LayoutParams(
+                dp(280),
+                dp(16)
+            ).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(6)
+            }
+        }
+        container.addView(progressBar)
+
+        val statusText = TextView(this).apply {
+            text = "Connecting…"
+            setTextColor(Color.parseColor("#EDF4FF"))
+            textSize = 11f
+        }
+        container.addView(statusText)
+
+        Thread {
+            try {
+                // Ensure update cache folder exists
+                val updatesDir = File(cacheDir, "updates")
+                if (!updatesDir.exists()) updatesDir.mkdirs()
+
+                val apkFile = File(updatesDir, "pokebonk-update.apk")
+                if (apkFile.exists()) apkFile.delete()
+
+                // Robust redirect following for GitHub Releases (github.com -> objects.githubusercontent.com)
+                var currentUrl = downloadUrl
+                var connection: HttpURLConnection? = null
+                var redirects = 0
+                val maxRedirects = 8
+
+                while (redirects < maxRedirects) {
+                    val u = URL(currentUrl)
+                    connection = (u.openConnection() as HttpURLConnection).apply {
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "PokeBonk-Android-Client")
+                        connectTimeout = 15000
+                        readTimeout = 20000
+                    }
+
+                    val code = connection.responseCode
+                    if (code == HttpURLConnection.HTTP_MOVED_PERM ||
+                        code == HttpURLConnection.HTTP_MOVED_TEMP ||
+                        code == HttpURLConnection.HTTP_SEE_OTHER ||
+                        code == 307 || code == 308
+                    ) {
+                        val newUrl = connection.getHeaderField("Location")
+                        connection.disconnect()
+                        if (newUrl != null) {
+                            currentUrl = newUrl
+                            redirects++
+                            continue
+                        }
+                    }
+                    break
+                }
+
+                if (connection == null || connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    throw Exception("Server returned HTTP ${connection?.responseCode ?: -1}")
+                }
+
+                val totalLength = connection.contentLength.toLong()
+                var downloadedBytes = 0L
+
+                val inputStream: InputStream = connection.inputStream
+                val outputStream = FileOutputStream(apkFile)
+
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    outputStream.write(buffer, 0, bytesRead)
+                    downloadedBytes += bytesRead
+
+                    if (totalLength > 0) {
+                        val percent = ((downloadedBytes * 100) / totalLength).toInt()
+                        mainHandler.post {
+                            progressBar.progress = percent
+                            statusText.text = "$percent% downloaded (${downloadedBytes / 1024} KB / ${totalLength / 1024} KB)"
                         }
                     }
                 }
+
+                outputStream.flush()
+                outputStream.close()
+                inputStream.close()
+                connection.disconnect()
+
+                // Mark this asset as installed in preferences
+                val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                prefs.edit().putLong(prefLastInstalledAssetId, apkAssetId).apply()
+
+                mainHandler.post {
+                    isDownloading = false
+                    dismissUpdateBanner()
+                    launchPackageInstaller(apkFile)
+                }
+
+            } catch (e: Exception) {
+                mainHandler.post {
+                    isDownloading = false
+                    statusText.text = "Download failed: ${e.message}"
+                    statusText.setTextColor(Color.parseColor("#FF6F61"))
+                    Toast.makeText(this, "Update download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    mainHandler.postDelayed({ dismissUpdateBanner() }, 3500)
+                }
+            }
+        }.start()
+    }
+
+    /**
+     * Prompts Android package installer for this app update.
+     */
+    private fun launchPackageInstaller(apkFile: File) {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            Toast.makeText(this, "Downloaded APK is missing or empty.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!packageManager.canRequestPackageInstalls()) {
+                pendingInstallFile = apkFile
+                Toast.makeText(this, "Please allow PokéBonk to install updates", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+                return
             }
         }
 
-        registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        try {
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                apkFile
+            )
+
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(installIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to launch installer: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Numerical semantic version comparator (e.g. 1.2 > 1.1, 1.10 > 1.2).
+     * Replaces broken string comparison like "1.1" >= "latest".
+     */
+    private fun isNewerVersion(current: String, candidate: String): Boolean {
+        val cleanCurrent = current.trim().removePrefix("v")
+        val cleanCandidate = candidate.trim().removePrefix("v")
+
+        if (cleanCandidate.isBlank() || cleanCandidate.equals("latest", ignoreCase = true)) {
+            return false
+        }
+
+        val currentParts = cleanCurrent.split(".").mapNotNull { it.toIntOrNull() }
+        val candidateParts = cleanCandidate.split(".").mapNotNull { it.toIntOrNull() }
+
+        if (currentParts.isEmpty() || candidateParts.isEmpty()) {
+            return false
+        }
+
+        val maxLen = maxOf(currentParts.size, candidateParts.size)
+        for (i in 0 until maxLen) {
+            val pCurrent = currentParts.getOrElse(i) { 0 }
+            val pCandidate = candidateParts.getOrElse(i) { 0 }
+            if (pCandidate > pCurrent) return true
+            if (pCandidate < pCurrent) return false
+        }
+        return false
     }
 }
