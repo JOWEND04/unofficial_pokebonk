@@ -18,7 +18,7 @@
       "icon": "build/icon.ico"
     },
     "portable": {
-      "artifactName": "PokeBonk-Windows.exe"
+      "artifactName": "PokeBonk.exe"
     },
     "publish": {
       "provider": "github",

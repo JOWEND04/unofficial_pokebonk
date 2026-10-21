@@ -65,9 +65,14 @@ autoUpdater.on('download-progress', (progress) => {
 });
 
 autoUpdater.on('error', (error) => {
-  sendLauncherStatus('error', {
-    message: error && error.message ? error.message : 'Unable to check for updates right now.'
-  });
+  const msg = error && error.message ? error.message : '';
+  if (msg.includes('latest.yml') || msg.includes('404')) {
+    sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
+  } else {
+    sendLauncherStatus('error', {
+      message: 'Unable to check for updates right now.'
+    });
+  }
 });
 
 autoUpdater.on('update-downloaded', () => {

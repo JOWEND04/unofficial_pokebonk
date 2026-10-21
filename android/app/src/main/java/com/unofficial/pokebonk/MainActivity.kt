@@ -152,9 +152,6 @@ class MainActivity : ComponentActivity() {
                 sendEscapeKeyToGame()
             }
         })
-
-        // Check for wrapper updates non-intrusively in background
-        checkForLatestAndroidRelease(isUserInitiated = false)
     }
 
     inner class AndroidBridge {
@@ -328,6 +325,10 @@ class MainActivity : ComponentActivity() {
             (function() {
                 const STORAGE_KEY = 'pb_swap_abxy';
 
+                function isSwapped() {
+                    return localStorage.getItem(STORAGE_KEY) === 'true';
+                }
+
                 function showToast(msg) {
                     const toast = document.getElementById('pb-android-layout-toast') || (() => {
                         const el = document.createElement('div');
@@ -337,15 +338,17 @@ class MainActivity : ComponentActivity() {
                             right: '18px',
                             bottom: '18px',
                             zIndex: '2147483647',
-                            background: 'rgba(0,0,0,0.85)',
-                            color: '#fff',
-                            border: '1px solid #ffd76d',
+                            background: 'rgba(9, 17, 27, 0.92)',
+                            color: '#ffd76d',
+                            border: '1.5px solid #ffd76d',
                             borderRadius: '10px',
-                            padding: '10px 14px',
-                            font: '600 12px/1.2 sans-serif',
+                            padding: '10px 16px',
+                            font: '600 13px/1.2 sans-serif',
                             opacity: '0',
-                            transition: 'opacity 0.2s ease',
-                            pointerEvents: 'none'
+                            transition: 'opacity 0.25s ease',
+                            pointerEvents: 'none',
+                            userSelect: 'none',
+                            boxShadow: '0 6px 20px rgba(0,0,0,0.6)'
                         });
                         document.body.appendChild(el);
                         return el;
@@ -377,7 +380,7 @@ class MainActivity : ComponentActivity() {
                                     value: Number((b && b.value) || 0)
                                 }));
 
-                                if (localStorage.getItem(STORAGE_KEY) === 'true' && mappedButtons.length >= 4) {
+                                if (isSwapped() && mappedButtons.length >= 4) {
                                     const b0 = mappedButtons[0];
                                     mappedButtons[0] = mappedButtons[1];
                                     mappedButtons[1] = b0;
@@ -406,66 +409,174 @@ class MainActivity : ComponentActivity() {
                 }
 
                 function toggleLayout() {
-                    const next = localStorage.getItem(STORAGE_KEY) !== 'true';
+                    const next = !isSwapped();
                     localStorage.setItem(STORAGE_KEY, String(next));
                     applyLayoutPatch();
-                    showToast(next ? 'Switch layout enabled (East = A)' : 'Xbox layout enabled (South = A)');
+                    updateMenuButtonText();
+                    showToast(next ? '🎮 Switch Layout: East = A, South = B' : '🎮 Xbox Layout: South = A, East = B');
+                }
+
+                function updateMenuButtonText() {
+                    const layoutItem = document.getElementById('pb-menu-item-layout');
+                    if (layoutItem) {
+                        layoutItem.textContent = isSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)';
+                    }
                 }
 
                 if (!window.__pbAndroidLayoutReady) {
                     window.__pbAndroidLayoutReady = true;
                     applyLayoutPatch();
 
-                    const bar = document.getElementById('pb-android-toolbar') || (() => {
+                    const oldBar = document.getElementById('pb-android-toolbar');
+                    if (oldBar) oldBar.remove();
+
+                    const overlayContainer = document.getElementById('pb-android-overlay-container') || (() => {
                         const container = document.createElement('div');
-                        container.id = 'pb-android-toolbar';
+                        container.id = 'pb-android-overlay-container';
                         Object.assign(container.style, {
                             position: 'fixed',
                             right: '16px',
                             top: '16px',
                             zIndex: '2147483647',
                             display: 'flex',
-                            gap: '8px',
-                            alignItems: 'center'
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            userSelect: 'none'
                         });
 
-                        function createButton(label, title, onClick) {
-                            const btn = document.createElement('button');
-                            btn.textContent = label;
-                            btn.title = title;
-                            Object.assign(btn.style, {
-                                padding: '8px 12px',
+                        const menuToggleBtn = document.createElement('button');
+                        menuToggleBtn.id = 'pb-android-menu-toggle';
+                        menuToggleBtn.textContent = '⚙ Menu';
+                        Object.assign(menuToggleBtn.style, {
+                            padding: '8px 14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid #ffd76d',
+                            background: 'rgba(9, 17, 27, 0.90)',
+                            color: '#ffd76d',
+                            font: '700 13px/1.2 sans-serif',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+                            backdropFilter: 'blur(6px)'
+                        });
+
+                        const menuPanel = document.createElement('div');
+                        menuPanel.id = 'pb-android-menu-panel';
+                        Object.assign(menuPanel.style, {
+                            display: 'none',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            marginTop: '8px',
+                            padding: '10px',
+                            width: '230px',
+                            borderRadius: '12px',
+                            border: '1.5px solid #ffd76d',
+                            background: 'rgba(9, 17, 27, 0.96)',
+                            boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
+                            backdropFilter: 'blur(8px)'
+                        });
+
+                        function createMenuItem(id, text, onClick) {
+                            const item = document.createElement('button');
+                            item.id = id;
+                            item.textContent = text;
+                            Object.assign(item.style, {
+                                padding: '10px 12px',
                                 borderRadius: '8px',
-                                border: '1px solid #ffd76d',
-                                background: 'rgba(9, 17, 27, 0.85)',
+                                border: '1px solid rgba(255, 215, 109, 0.4)',
+                                background: 'rgba(255, 255, 255, 0.06)',
                                 color: '#edf4ff',
                                 font: '600 12px/1.2 sans-serif',
+                                textAlign: 'left',
                                 cursor: 'pointer',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                backdropFilter: 'blur(4px)'
+                                transition: 'background 0.15s ease'
                             });
-                            btn.onclick = onClick;
-                            return btn;
+                            item.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                onClick();
+                            });
+                            item.addEventListener('touchstart', (e) => {
+                                e.stopPropagation();
+                            }, { passive: true });
+                            return item;
                         }
 
-                        const layoutBtn = createButton('Layout', 'Toggle Controller Layout (Xbox / Switch)', toggleLayout);
-                        const reloadBtn = createButton('Reload Game', 'Fetch latest web game updates', () => {
-                            if (window.AndroidApp && window.AndroidApp.reloadGame) {
-                                window.AndroidApp.reloadGame();
-                            } else {
-                                location.reload(true);
-                            }
+                        function toggleMenu(show) {
+                            const isVisible = menuPanel.style.display === 'flex';
+                            const next = typeof show === 'boolean' ? show : !isVisible;
+                            menuPanel.style.display = next ? 'flex' : 'none';
+                            menuToggleBtn.style.background = next ? '#ffd76d' : 'rgba(9, 17, 27, 0.90)';
+                            menuToggleBtn.style.color = next ? '#1d1d1d' : '#ffd76d';
+                            if (next) updateMenuButtonText();
+                        }
+
+                        menuToggleBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            toggleMenu();
                         });
-                        const updateBtn = createButton('Check Updates', 'Check for native app updates', () => {
-                            if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
-                                window.AndroidApp.checkForUpdatesManual();
+                        menuToggleBtn.addEventListener('touchstart', (e) => {
+                            e.stopPropagation();
+                        }, { passive: true });
+
+                        const layoutItem = createMenuItem(
+                            'pb-menu-item-layout',
+                            isSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)',
+                            () => {
+                                toggleLayout();
+                                toggleMenu(false);
+                            }
+                        );
+
+                        const reloadItem = createMenuItem(
+                            'pb-menu-item-reload',
+                            '🔄 Reload Live Game',
+                            () => {
+                                toggleMenu(false);
+                                if (window.AndroidApp && window.AndroidApp.reloadGame) {
+                                    window.AndroidApp.reloadGame();
+                                } else {
+                                    location.reload(true);
+                                }
+                            }
+                        );
+
+                        const updateItem = createMenuItem(
+                            'pb-menu-item-update',
+                            '⬇ Check for Updates',
+                            () => {
+                                toggleMenu(false);
+                                if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
+                                    window.AndroidApp.checkForUpdatesManual();
+                                }
+                            }
+                        );
+
+                        const closeItem = createMenuItem(
+                            'pb-menu-item-close',
+                            '✕ Close Menu',
+                            () => {
+                                toggleMenu(false);
+                            }
+                        );
+                        closeItem.style.color = '#9bb6d0';
+                        closeItem.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+
+                        menuPanel.appendChild(layoutItem);
+                        menuPanel.appendChild(reloadItem);
+                        menuPanel.appendChild(updateItem);
+                        menuPanel.appendChild(closeItem);
+
+                        container.appendChild(menuToggleBtn);
+                        container.appendChild(menuPanel);
+                        document.body.appendChild(container);
+
+                        document.addEventListener('click', (e) => {
+                            if (!container.contains(e.target)) {
+                                toggleMenu(false);
                             }
                         });
 
-                        container.appendChild(layoutBtn);
-                        container.appendChild(reloadBtn);
-                        container.appendChild(updateBtn);
-                        document.body.appendChild(container);
                         return container;
                     })();
                 }
