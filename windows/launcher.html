@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PokéBonk Launcher</title>
+    <style>
+      :root {
+        --bg: #09111b;
+        --panel: #111c2b;
+        --panel-strong: #16243a;
+        --accent: #ffcf4a;
+        --accent-strong: #ffd76d;
+        --text: #edf4ff;
+        --muted: #9bb6d0;
+        --danger: #ff6f61;
+        --success: #67d38a;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        font-family: "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top, #132337 0%, var(--bg) 48%, #070c13 100%);
+        color: var(--text);
+      }
+
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .launcher {
+        width: 100%;
+        max-width: 470px;
+        background: rgba(17, 28, 43, 0.96);
+        border: 1px solid rgba(255, 207, 74, 0.34);
+        border-radius: 18px;
+        box-shadow: 0 28px 70px rgba(0,0,0,0.5);
+        padding: 22px 20px 18px;
+      }
+
+      .title {
+        margin: 0 0 10px;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .subtitle {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status {
+        background: rgba(22, 36, 58, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 12px 14px;
+        min-height: 60px;
+        color: var(--text);
+        margin-bottom: 16px;
+      }
+
+      .status strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 4px;
+        color: var(--accent-strong);
+      }
+
+      .status span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 14px 16px;
+        cursor: pointer;
+        transition: transform 0.15s ease, filter 0.15s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.04);
+      }
+
+      .primary {
+        background: linear-gradient(180deg, var(--accent) 0%, #f0b31c 100%);
+        color: #1d1d1d;
+      }
+
+      .secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .danger {
+        background: linear-gradient(180deg, #ff867a 0%, var(--danger) 100%);
+        color: #fff;
+      }
+
+      .status-checking { color: var(--accent-strong); }
+      .status-update { color: var(--success); }
+      .status-error { color: #ffb3a8; }
+      .status-ready { color: var(--accent-strong); }
+
+      @media (max-width: 440px) {
+        .actions { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="launcher">
+      <h1 class="title">PokéBonk</h1>
+      <p class="subtitle">Choose how you want to launch the game.</p>
+
+      <div id="status" class="status">
+        <strong>Checking for updates…</strong>
+        <span>Connecting to the newest game build.</span>
+      </div>
+
+      <div class="actions">
+        <button id="launch" class="primary">Launch Game</button>
+        <button id="update" class="secondary">Update & Launch</button>
+        <button id="exit" class="danger" style="grid-column: 1 / -1;">Exit</button>
+      </div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require('electron');
+      const statusEl = document.getElementById('status');
+
+      function setStatus(type, title, message) {
+        statusEl.className = `status status-${type}`;
+        statusEl.innerHTML = `<strong>${title}</strong><span>${message}</span>`;
+      }
+
+      ipcRenderer.on('launcher-status', (_, payload = {}) => {
+        const status = payload.status || 'checking';
+        const message = payload.message || 'Checking for updates…';
+
+        if (status === 'checking') {
+          setStatus('checking', 'Checking for updates…', message);
+          return;
+        }
+
+        if (status === 'update-available') {
+          setStatus('update', 'Update available', `${message} Version ${payload.version || 'latest'} ready to install.`);
+          return;
+        }
+
+        if (status === 'downloading') {
+          const percent = Number(payload.percent || 0);
+          setStatus('update', 'Downloading update…', `${percent}% complete (${message})`);
+          return;
+        }
+
+        if (status === 'ready') {
+          setStatus('ready', 'Update downloaded', message);
+          return;
+        }
+
+        if (status === 'up-to-date') {
+          setStatus('update', 'Up to date', message);
+          return;
+        }
+
+        if (status === 'error') {
+          setStatus('error', 'Update check failed', message);
+          return;
+        }
+
+        setStatus('checking', 'Checking for updates…', message);
+      });
+
+      document.getElementById('launch').addEventListener('click', () => {
+        ipcRenderer.send('launch-game');
+      });
+
+      document.getElementById('update').addEventListener('click', () => {
+        ipcRenderer.send('update-game');
+      });
+
+      document.getElementById('exit').addEventListener('click', () => {
+        ipcRenderer.send('exit-launcher');
+      });
+    </script>
+  </body>
+</html>
