@@ -230,6 +230,29 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function syncSensitivityVisuals(sens) {
+        const val = typeof sens === 'number' ? sens : getStickSensitivity();
+        const min = 0.2;
+        const max = 3.0;
+        const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+
+        const nativeInput = findNativeSensitivityInput();
+        if (nativeInput) {
+            if (Math.abs((parseFloat(nativeInput.value) || 1.0) - val) > 0.02) {
+                nativeInput.value = val.toFixed(2);
+            }
+            nativeInput.style.setProperty('--p', pct + '%');
+
+            const row = nativeInput.closest('.st-row');
+            if (row) {
+                const valDisplay = row.querySelector('.st-val');
+                if (valDisplay) {
+                    valDisplay.textContent = val.toFixed(2);
+                }
+            }
+        }
+    }
+
     function setStickSensitivity(val) {
         const clamped = Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
         cachedSensitivity = clamped;
@@ -240,9 +263,8 @@ window.addEventListener('DOMContentLoaded', () => {
             nativeInput.value = String(clamped);
             nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
             nativeInput.dispatchEvent(new Event('change', { bubbles: true }));
-            const valDisplay = nativeInput.closest('.st-row')?.querySelector('.st-val');
-            if (valDisplay) valDisplay.textContent = clamped.toFixed(2);
         }
+        syncSensitivityVisuals(clamped);
         return clamped;
     }
 
@@ -327,12 +349,6 @@ window.addEventListener('DOMContentLoaded', () => {
                         span.innerHTML = `${isEn ? 'Stick & Camera Sensitivity' : 'Sensibilidad de sticks y cámara'}<small>${isEn ? 'Analog stick responsiveness & camera rotation speed (0.2x – 3.0x)' : 'Velocidad de giro del stick analógico y cámara (0.2x – 3.0x)'}</small>`;
                     }
 
-                    const savedSens = getStickSensitivity();
-                    if (Math.abs(parseFloat(nativeInput.value) - savedSens) > 0.04) {
-                        nativeInput.value = String(savedSens);
-                        nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-
                     row.addEventListener('keydown', (e) => {
                         let cur = parseFloat(nativeInput.value) || 1.0;
                         if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
@@ -347,12 +363,29 @@ window.addEventListener('DOMContentLoaded', () => {
                     });
 
                     nativeInput.addEventListener('input', () => {
-                        const v = parseFloat(nativeInput.value) || 1.0;
-                        localStorage.setItem(SENSITIVITY_KEY, String(v));
+                        const v = Math.max(0.2, Math.min(3.0, parseFloat(nativeInput.value) || 1.0));
+                        cachedSensitivity = v;
+                        try { localStorage.setItem(SENSITIVITY_KEY, String(v)); } catch (_) {}
+                        syncSensitivityVisuals(v);
                     });
                 }
+
+                // Unconditionally keep input, track fill, and text display in sync whenever settings are shown
+                const savedSens = getStickSensitivity();
+                if (Math.abs((parseFloat(nativeInput.value) || 1.0) - savedSens) > 0.02) {
+                    nativeInput.value = String(savedSens);
+                    nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                syncSensitivityVisuals(savedSens);
             }
         }
+
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.closest && e.target.closest('.st-tab, [role="tab"], .tab, .back-btn')) {
+                setTimeout(patchSettings, 20);
+                setTimeout(patchSettings, 120);
+            }
+        }, true);
 
         let patchDebounce = null;
         const observer = new MutationObserver((mutations) => {
