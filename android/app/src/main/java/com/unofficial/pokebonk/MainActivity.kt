@@ -1179,6 +1179,7 @@ class MainActivity : ComponentActivity() {
         container.addView(statusText)
 
         Thread {
+            var connection: HttpURLConnection? = null
             try {
                 // Ensure update cache folder exists
                 val updatesDir = File(cacheDir, "updates")
@@ -1189,7 +1190,6 @@ class MainActivity : ComponentActivity() {
 
                 // Robust redirect following for GitHub Releases (github.com -> objects.githubusercontent.com)
                 var currentUrl = downloadUrl
-                var connection: HttpURLConnection? = null
                 var redirects = 0
                 val maxRedirects = 8
 
