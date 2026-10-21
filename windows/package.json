@@ -18,6 +18,12 @@
     },
     "portable": {
       "artifactName": "PokeBonk-Windows.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "JOWEND04",
+      "repo": "unofficial_pokebonk",
+      "releaseType": "release"
     }
   },
   "devDependencies": {
