@@ -47,16 +47,17 @@ jobs:
             $pkg = Get-Content package.json | ConvertFrom-Json
             $ver = $pkg.version
 
-            @"
-version: $ver
-files:
-  - url: PokeBonk.exe
-    sha512: $sha512
-    size: $size
-path: PokeBonk.exe
-sha512: $sha512
-releaseDate: '$date'
-"@ | Set-Content "dist/latest.yml" -Encoding UTF8
+            $lines = @(
+              "version: $ver",
+              "files:",
+              "  - url: PokeBonk.exe",
+              "    sha512: $sha512",
+              "    size: $size",
+              "path: PokeBonk.exe",
+              "sha512: $sha512",
+              "releaseDate: '$date'"
+            )
+            $lines -join "`n" | Set-Content "dist/latest.yml" -Encoding UTF8
             Write-Host "Successfully generated dist/latest.yml for v$ver"
           } else {
             Write-Error "dist/PokeBonk.exe not found!"
