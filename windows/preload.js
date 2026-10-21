@@ -28,20 +28,22 @@ window.addEventListener('DOMContentLoaded', () => {
             pointer-events: auto;
         }
         .pb-win-btn {
-            background: rgba(20, 22, 34, 0.95); color: #FFF; border: 1.5px solid rgba(255,215,0,0.6);
-            width: 38px; height: 38px; border-radius: 8px; font-weight: bold; font-size: 16px;
+            background: rgba(26, 22, 48, 0.95); color: #ffcb3a; border: 1.5px solid rgba(255, 203, 58, 0.5);
+            width: 36px; height: 36px; border-radius: 10px; font-weight: 800; font-size: 15px;
             display: flex; align-items: center; justify-content: center; cursor: pointer;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.8);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.7);
             pointer-events: auto !important;
-            transition: background 0.2s, border-color 0.2s;
+            transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
         }
-        .pb-win-btn:hover { background: rgba(230, 21, 21, 0.95); border-color: #FFD700; }
+        .pb-win-btn:hover { background: #ff5a5f; border-color: #ff5a5f; color: #ffffff; transform: translateY(-1px); }
 
         #pb-controller-toast {
             position: fixed; top: 18px; right: 95px; z-index: 2147483647;
-            background: rgba(18, 20, 32, 0.95); color: #FFD700; border: 1.5px solid #FFD700;
-            padding: 10px 16px; border-radius: 8px; font-family: system-ui, sans-serif;
-            font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+            background: rgba(26, 22, 48, 0.95); color: #ffcb3a; border: 1.5px solid #ffcb3a;
+            padding: 10px 18px; border-radius: 12px; font-family: "Nunito", "Segoe UI", system-ui, sans-serif;
+            font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.7), 0 0 12px rgba(255, 203, 58, 0.2);
+            backdrop-filter: blur(8px);
             pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
         }
 
@@ -77,8 +79,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const header = document.createElement('div');
     header.id = 'pb-desktop-header';
     header.innerHTML = `
-        <div class="pb-win-btn" id="pb-min-btn" title="Minimize">🗕</div>
-        <div class="pb-win-btn" id="pb-close-btn" title="Close App">✕</div>
+        <div class="pb-win-btn" id="pb-min-btn" title="Minimize">&mdash;</div>
+        <div class="pb-win-btn" id="pb-close-btn" title="Close App">&times;</div>
     `;
     document.body.appendChild(header);
 
@@ -206,14 +208,14 @@ window.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('pb_swap_abxy', swapABXY);
             showToast(
                 swapABXY
-                    ? '🎮 Layout: AB/XY Swapped (Nintendo Labels: East = A)'
-                    : '🎮 Layout: Standard Positional (South Button = Jump)'
+                    ? 'Layout: Switch Mode (East = A, South = B)'
+                    : 'Layout: Xbox Mode (South = A, East = B)'
             );
         } else if (e.key === 'F8') {
             const current = getStickSensitivity();
             const next = current >= 1.95 ? 0.75 : Math.round((current + 0.25) * 100) / 100;
             const updated = setStickSensitivity(next);
-            showToast(`🎯 Stick Sensitivity: ${Math.round(updated * 100)}% (Press F8 to cycle, or adjust in Settings)`);
+            showToast(`Stick Sensitivity: ${Math.round(updated * 100)}% (F8 cycles, or adjust in Settings)`);
         } else if (e.key === 'F7') {
             promptDiscordClientId();
         }
@@ -221,10 +223,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('gamepadconnected', (e) => {
         const nintendo = isNintendoDevice(e.gamepad.id);
-        const name = nintendo ? 'Nintendo / Switch Mode Controller' : 'Xbox / XInput Controller';
-        const modeText = swapABXY ? 'Swapped AB/XY' : 'Standard Positional';
+        const name = nintendo ? 'Nintendo / Switch Controller' : 'Xbox Controller';
+        const modeText = swapABXY ? 'Switch Layout' : 'Xbox Layout';
         const sensText = `${Math.round(getStickSensitivity() * 100)}%`;
-        showToast(`🎮 ${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap layout | F8: Sensitivity | F7: Discord ID`, 5500);
+        showToast(`${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap | F8: Sens | F7: Discord`, 5500);
     });
 
     const DEADZONE = 0.08;

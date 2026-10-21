@@ -3,196 +3,374 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PokéBonk Launcher</title>
+    <title>PokéBonk Desktop Client</title>
     <style>
       :root {
-        --bg: #09111b;
-        --panel: #111c2b;
-        --panel-strong: #16243a;
-        --accent: #ffcf4a;
-        --accent-strong: #ffd76d;
-        --text: #edf4ff;
-        --muted: #9bb6d0;
-        --danger: #ff6f61;
-        --success: #67d38a;
+        --bg-deep: #0c0919;
+        --bg-mid: #16122c;
+        --bg-top: #221a42;
+        --panel: #1c1636;
+        --panel-inner: #130f26;
+        --border-gold: rgba(255, 203, 58, 0.4);
+        --border-gold-glow: rgba(255, 203, 58, 0.18);
+        --accent-gold: #ffcb3a;
+        --accent-gold-dark: #f2a516;
+        --accent-red: #ff5a5f;
+        --accent-blue: #3a8cff;
+        --accent-green: #36c96a;
+        --text-white: #ffffff;
+        --text-muted: #9e95c2;
+        --font: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
 
       html, body {
-        margin: 0;
         width: 100vw;
         height: 100vh;
         overflow: hidden;
-        background: radial-gradient(circle at top, #132337 0%, var(--bg) 48%, #070c13 100%);
-        color: var(--text);
-        font-family: "Segoe UI", sans-serif;
+        background: radial-gradient(circle at 50% 0%, var(--bg-top) 0%, var(--bg-mid) 50%, var(--bg-deep) 100%);
+        color: var(--text-white);
+        font-family: var(--font);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 203, 58, 0.3);
+        border-radius: 20px;
       }
 
-      body {
+      .window-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 22px 24px 20px;
+        position: relative;
+      }
+
+      /* Title bar drag support */
+      .header {
+        -webkit-app-region: drag;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: grab;
+      }
+
+      .header:active {
+        cursor: grabbing;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .pokeball-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, var(--accent-red) 48%, #1a1433 48%, #1a1433 52%, #ffffff 52%);
+        border: 2px solid #ffffff;
+        box-shadow: 0 0 12px rgba(255, 90, 95, 0.5);
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .pokeball-icon::after {
+        content: '';
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: #ffffff;
+        border: 2px solid #1a1433;
+        box-shadow: 0 0 6px rgba(255, 203, 58, 0.8);
+      }
+
+      .title-group {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .title-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .brand-title {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, #ffffff 30%, var(--accent-gold) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .badge {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 6px;
+        background: rgba(255, 203, 58, 0.15);
+        border: 1px solid var(--accent-gold);
+        color: var(--accent-gold);
+      }
+
+      .brand-sub {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 0.02em;
+        margin-top: 1px;
+      }
+
+      .win-controls {
+        -webkit-app-region: no-drag;
+        display: flex;
+        gap: 6px;
+      }
+
+      .win-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+
+      .win-btn:hover {
+        background: rgba(255, 90, 95, 0.85);
+        border-color: var(--accent-red);
+        color: #ffffff;
+      }
+
+      /* Status Display */
+      .status-card {
+        background: var(--panel-inner);
+        border: 1px solid var(--border-gold);
+        border-radius: 14px;
+        padding: 14px 16px;
+        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+        margin: 14px 0;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .status-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent-gold);
+        box-shadow: 0 0 10px var(--accent-gold);
+        flex-shrink: 0;
+        transition: background 0.3s, box-shadow 0.3s;
+      }
+
+      .status-title {
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--text-white);
+      }
+
+      .status-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.4;
+        margin-left: 20px;
+      }
+
+      /* Progress Bar */
+      .progress-container {
+        display: none;
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        margin-top: 10px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent-gold) 0%, var(--accent-gold-dark) 100%);
+        border-radius: 10px;
+        transition: width 0.25s ease;
+      }
+
+      /* Action Buttons */
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      button.btn {
+        border: none;
+        border-radius: 12px;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 13px 16px;
+        cursor: pointer;
+        transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
-      .launcher {
-        width: 470px;
-        max-width: calc(100vw - 28px);
-        min-height: 200px;
-        background: rgba(17, 28, 43, 0.96);
-        border: 1px solid rgba(255, 207, 74, 0.35);
-        border-radius: 18px;
-        box-shadow: 0 24px 50px rgba(0,0,0,0.42);
-        padding: 20px 20px 18px;
+      button.btn:hover {
+        transform: translateY(-1.5px);
+        filter: brightness(1.08);
       }
 
-      .title {
-        margin: 0 0 10px;
-        font-size: 28px;
-        font-weight: 800;
-        letter-spacing: 0.02em;
+      button.btn:active {
+        transform: translateY(0);
       }
 
-      .subtitle {
-        margin: 0 0 14px;
-        color: var(--muted);
-        font-size: 14px;
+      .btn-primary {
+        background: linear-gradient(180deg, #ffdc4a 0%, var(--accent-gold-dark) 100%);
+        color: #120e24;
+        box-shadow: 0 6px 20px rgba(242, 165, 22, 0.45);
       }
 
-      .status {
-        background: rgba(22, 36, 58, 0.8);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        padding: 12px 14px;
-        min-height: 62px;
-        color: var(--text);
-        margin-bottom: 16px;
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1.5px solid rgba(255, 203, 58, 0.4);
+        color: var(--accent-gold);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
       }
 
-      .status strong {
-        display: block;
-        font-size: 14px;
-        margin-bottom: 4px;
-        color: var(--accent-strong);
+      .btn-secondary:hover {
+        background: rgba(255, 203, 58, 0.12);
+        border-color: var(--accent-gold);
       }
 
-      .status span {
-        font-size: 13px;
-        color: var(--muted);
-      }
-
-      .actions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-      }
-
-      button {
-        border: none;
-        border-radius: 12px;
-        font-size: 15px;
-        font-weight: 700;
-        padding: 14px 16px;
-        cursor: pointer;
-        transition: transform 0.15s ease, filter 0.15s ease;
-      }
-
-      button:hover {
-        transform: translateY(-1px);
-        filter: brightness(1.04);
-      }
-
-      .primary {
-        background: linear-gradient(180deg, var(--accent) 0%, #f0b31c 100%);
-        color: #1d1d1d;
-      }
-
-      .secondary {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: var(--text);
-      }
-
-      .danger {
-        background: linear-gradient(180deg, #ff867a 0%, var(--danger) 100%);
-        color: #fff;
-      }
-
-      .status-checking { color: var(--accent-strong); }
-      .status-update { color: var(--success); }
-      .status-error { color: #ffb3a8; }
-      .status-ready { color: var(--accent-strong); }
-
-      @media (max-width: 440px) {
-        .actions {
-          grid-template-columns: 1fr;
-        }
-      }
+      /* Status Styles */
+      .state-checking .status-indicator { background: var(--accent-gold); box-shadow: 0 0 10px var(--accent-gold); }
+      .state-success .status-indicator { background: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
+      .state-downloading .status-indicator { background: var(--accent-blue); box-shadow: 0 0 10px var(--accent-blue); }
+      .state-error .status-indicator { background: var(--accent-red); box-shadow: 0 0 10px var(--accent-red); }
     </style>
   </head>
   <body>
-    <div class="launcher">
-      <h1 class="title">PokéBonk</h1>
-      <p class="subtitle">Choose how you want to launch the game.</p>
+    <div class="window-container">
+      <div class="header">
+        <div class="brand">
+          <div class="pokeball-icon"></div>
+          <div class="title-group">
+            <div class="title-row">
+              <div class="brand-title">PokéBonk</div>
+              <div class="badge">Desktop</div>
+            </div>
+            <div class="brand-sub">Native Desktop Launcher</div>
+          </div>
+        </div>
+        <div class="win-controls">
+          <div class="win-btn" id="btn-close" title="Close Launcher">&#10005;</div>
+        </div>
+      </div>
 
-      <div id="status" class="status">
-        <strong>Checking for updates…</strong>
-        <span>Connecting to the newest game build.</span>
+      <div id="status-card" class="status-card state-checking">
+        <div class="status-header">
+          <div id="indicator" class="status-indicator"></div>
+          <div id="status-title" class="status-title">Checking for Updates</div>
+        </div>
+        <div id="status-desc" class="status-desc">Connecting to the release feed...</div>
+        <div id="progress-container" class="progress-container">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
       </div>
 
       <div class="actions">
-        <button id="launch" class="primary">Launch Game</button>
-        <button id="update" class="secondary">Update &amp; Launch</button>
-        <button id="exit" class="danger" style="grid-column: 1 / -1;">Exit</button>
+        <button id="launch" class="btn btn-primary">Launch Game</button>
+        <button id="update" class="btn btn-secondary">Check Updates</button>
       </div>
     </div>
 
     <script>
       const { ipcRenderer } = require('electron');
 
-      const statusEl = document.getElementById('status');
+      const card = document.getElementById('status-card');
+      const titleEl = document.getElementById('status-title');
+      const descEl = document.getElementById('status-desc');
+      const progressContainer = document.getElementById('progress-container');
+      const progressBar = document.getElementById('progress-bar');
 
-      function setStatus(type, title, message) {
-        statusEl.className = `status status-${type}`;
-        statusEl.innerHTML = `<strong>${title}</strong><span>${message}</span>`;
+      function updateStatus(stateClass, title, description, showProgress = false, percent = 0) {
+        card.className = `status-card state-${stateClass}`;
+        titleEl.textContent = title;
+        descEl.textContent = description;
+        if (showProgress) {
+          progressContainer.style.display = 'block';
+          progressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+        } else {
+          progressContainer.style.display = 'none';
+        }
       }
 
       ipcRenderer.on('launcher-status', (_, payload = {}) => {
         const status = payload.status || 'checking';
-        const message = payload.message || 'Checking for updates…';
+        const msg = payload.message || '';
 
-        if (status === 'checking') {
-          setStatus('checking', 'Checking for updates…', message);
-          return;
+        switch (status) {
+          case 'checking':
+            updateStatus('checking', 'Checking for Updates', msg || 'Scanning GitHub for latest builds...');
+            break;
+          case 'update-available':
+            updateStatus('downloading', 'Update Available', `Version ${payload.version || 'new'} found. Ready to download.`);
+            break;
+          case 'downloading':
+            const pct = Number(payload.percent || 0);
+            updateStatus('downloading', 'Downloading Update', `${pct}% complete. Relaunch will occur automatically.`, true, pct);
+            break;
+          case 'ready':
+            updateStatus('success', 'Update Downloaded', msg || 'Restart the application to apply the latest build.');
+            break;
+          case 'up-to-date':
+            updateStatus('success', 'Up to Date', msg || 'Your client is running the latest live build.');
+            break;
+          case 'error':
+            updateStatus('error', 'Update Check Notice', msg || 'Unable to query release feed. Ready to play offline.');
+            break;
+          default:
+            updateStatus('checking', 'Ready', msg || 'Ready to start.');
+            break;
         }
-
-        if (status === 'update-available') {
-          setStatus('update', 'Update available', `${message} Version ${payload.version || 'latest'} ready to install.`);
-          return;
-        }
-
-        if (status === 'downloading') {
-          const percent = Number(payload.percent || 0);
-          setStatus('update', 'Downloading update…', `${percent}% complete (${message})`);
-          return;
-        }
-
-        if (status === 'ready') {
-          setStatus('ready', 'Update downloaded', message);
-          return;
-        }
-
-        if (status === 'up-to-date') {
-          setStatus('update', 'Up to date', message);
-          return;
-        }
-
-        if (status === 'error') {
-          setStatus('error', 'Update check failed', message);
-          return;
-        }
-
-        setStatus('checking', 'Checking for updates…', message);
       });
 
       document.getElementById('launch').addEventListener('click', () => {
@@ -203,7 +381,7 @@
         ipcRenderer.send('update-game');
       });
 
-      document.getElementById('exit').addEventListener('click', () => {
+      document.getElementById('btn-close').addEventListener('click', () => {
         ipcRenderer.send('exit-launcher');
       });
     </script>

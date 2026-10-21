@@ -362,7 +362,7 @@ class MainActivity : ComponentActivity() {
                     }
                     const sensItem = document.getElementById('pb-menu-item-sens');
                     if (sensItem) {
-                        sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(clamped * 100) + '%';
+                        sensItem.textContent = 'Stick Sensitivity: ' + Math.round(clamped * 100) + '%';
                     }
                     return clamped;
                 }
@@ -376,17 +376,17 @@ class MainActivity : ComponentActivity() {
                             right: '18px',
                             bottom: '18px',
                             zIndex: '2147483647',
-                            background: 'rgba(9, 17, 27, 0.92)',
-                            color: '#ffd76d',
-                            border: '1.5px solid #ffd76d',
-                            borderRadius: '10px',
-                            padding: '10px 16px',
-                            font: '600 13px/1.2 sans-serif',
+                            background: 'rgba(26, 22, 48, 0.95)',
+                            color: '#ffcb3a',
+                            border: '1.5px solid #ffcb3a',
+                            borderRadius: '12px',
+                            padding: '10px 18px',
+                            font: '700 13px/1.2 "Nunito", system-ui, sans-serif',
                             opacity: '0',
                             transition: 'opacity 0.25s ease',
                             pointerEvents: 'none',
                             userSelect: 'none',
-                            boxShadow: '0 6px 20px rgba(0,0,0,0.6)'
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.7), 0 0 12px rgba(255, 203, 58, 0.2)'
                         });
                         document.body.appendChild(el);
                         return el;
@@ -476,17 +476,17 @@ class MainActivity : ComponentActivity() {
                     localStorage.setItem(STORAGE_KEY, String(next));
                     applyLayoutPatch();
                     updateMenuButtonText();
-                    showToast(next ? '🎮 Switch Layout: East = A, South = B' : '🎮 Xbox Layout: South = A, East = B');
+                    showToast(next ? 'Switch Layout: East = A, South = B' : 'Xbox Layout: South = A, East = B');
                 }
 
                 function updateMenuButtonText() {
                     const layoutItem = document.getElementById('pb-menu-item-layout');
                     if (layoutItem) {
-                        layoutItem.textContent = isSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)';
+                        layoutItem.textContent = isSwapped() ? 'Layout: Switch (East = A)' : 'Layout: Xbox (South = A)';
                     }
                     const sensItem = document.getElementById('pb-menu-item-sens');
                     if (sensItem) {
-                        sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%';
+                        sensItem.textContent = 'Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%';
                     }
                 }
 
@@ -579,7 +579,7 @@ class MainActivity : ComponentActivity() {
                                 localStorage.setItem(SENSITIVITY_KEY, String(v));
                                 const sensItem = document.getElementById('pb-menu-item-sens');
                                 if (sensItem) {
-                                    sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(v * 100) + '%';
+                                    sensItem.textContent = 'Stick Sensitivity: ' + Math.round(v * 100) + '%';
                                 }
                             });
 
@@ -635,17 +635,19 @@ class MainActivity : ComponentActivity() {
 
                         const menuToggleBtn = document.createElement('button');
                         menuToggleBtn.id = 'pb-android-menu-toggle';
-                        menuToggleBtn.textContent = '⚙ Menu';
+                        menuToggleBtn.textContent = 'MENU';
                         Object.assign(menuToggleBtn.style, {
-                            padding: '8px 14px',
+                            padding: '8px 16px',
                             borderRadius: '10px',
-                            border: '1.5px solid #ffd76d',
-                            background: 'rgba(9, 17, 27, 0.90)',
-                            color: '#ffd76d',
-                            font: '700 13px/1.2 sans-serif',
+                            border: '1.5px solid #ffcb3a',
+                            background: 'rgba(26, 22, 48, 0.94)',
+                            color: '#ffcb3a',
+                            font: '800 12px/1.2 "Nunito", system-ui, sans-serif',
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase',
                             cursor: 'pointer',
-                            boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
-                            backdropFilter: 'blur(6px)'
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                            backdropFilter: 'blur(8px)'
                         });
 
                         const menuPanel = document.createElement('div');
@@ -655,13 +657,13 @@ class MainActivity : ComponentActivity() {
                             flexDirection: 'column',
                             gap: '8px',
                             marginTop: '8px',
-                            padding: '10px',
-                            width: '240px',
-                            borderRadius: '12px',
-                            border: '1.5px solid #ffd76d',
-                            background: 'rgba(9, 17, 27, 0.96)',
-                            boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
-                            backdropFilter: 'blur(8px)'
+                            padding: '12px',
+                            width: '250px',
+                            borderRadius: '14px',
+                            border: '1.5px solid #ffcb3a',
+                            background: 'rgba(26, 22, 48, 0.98)',
+                            boxShadow: '0 12px 36px rgba(0,0,0,0.85), 0 0 16px rgba(255, 203, 58, 0.15)',
+                            backdropFilter: 'blur(10px)'
                         });
 
                         function createMenuItem(id, text, onClick) {
@@ -669,15 +671,16 @@ class MainActivity : ComponentActivity() {
                             item.id = id;
                             item.textContent = text;
                             Object.assign(item.style, {
-                                padding: '10px 12px',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(255, 215, 109, 0.4)',
-                                background: 'rgba(255, 255, 255, 0.06)',
-                                color: '#edf4ff',
-                                font: '600 12px/1.2 sans-serif',
+                                padding: '11px 14px',
+                                borderRadius: '10px',
+                                border: '1px solid rgba(255, 203, 58, 0.25)',
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                color: '#ffffff',
+                                font: '700 12px/1.2 "Nunito", system-ui, sans-serif',
+                                letterSpacing: '0.02em',
                                 textAlign: 'left',
                                 cursor: 'pointer',
-                                transition: 'background 0.15s ease'
+                                transition: 'all 0.15s ease'
                             });
                             item.addEventListener('click', (e) => {
                                 e.stopPropagation();
@@ -700,8 +703,8 @@ class MainActivity : ComponentActivity() {
                             const isVisible = menuPanel.style.display === 'flex';
                             const next = typeof show === 'boolean' ? show : !isVisible;
                             menuPanel.style.display = next ? 'flex' : 'none';
-                            menuToggleBtn.style.background = next ? '#ffd76d' : 'rgba(9, 17, 27, 0.90)';
-                            menuToggleBtn.style.color = next ? '#1d1d1d' : '#ffd76d';
+                            menuToggleBtn.style.background = next ? '#ffcb3a' : 'rgba(26, 22, 48, 0.94)';
+                            menuToggleBtn.style.color = next ? '#120e24' : '#ffcb3a';
                             if (next) {
                                 updateMenuButtonText();
                                 setTimeout(() => document.addEventListener('click', onOutsideClick), 10);
@@ -721,7 +724,7 @@ class MainActivity : ComponentActivity() {
 
                         const layoutItem = createMenuItem(
                             'pb-menu-item-layout',
-                            isSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)',
+                            isSwapped() ? 'Layout: Switch (East = A)' : 'Layout: Xbox (South = A)',
                             () => {
                                 toggleLayout();
                                 toggleMenu(false);
@@ -730,18 +733,18 @@ class MainActivity : ComponentActivity() {
 
                         const sensItem = createMenuItem(
                             'pb-menu-item-sens',
-                            '🎯 Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%',
+                            'Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%',
                             () => {
                                 const cur = getStickSensitivity();
                                 const next = cur >= 1.55 ? 0.8 : Math.round((cur + 0.2) * 10) / 10;
                                 const updated = setStickSensitivity(next);
-                                showToast('🎯 Stick Sensitivity: ' + Math.round(updated * 100) + '%');
+                                showToast('Stick Sensitivity: ' + Math.round(updated * 100) + '%');
                             }
                         );
 
                         const reloadItem = createMenuItem(
                             'pb-menu-item-reload',
-                            '🔄 Reload Live Game',
+                            'Reload Game',
                             () => {
                                 toggleMenu(false);
                                 if (window.AndroidApp && window.AndroidApp.reloadGame) {
@@ -754,7 +757,7 @@ class MainActivity : ComponentActivity() {
 
                         const updateItem = createMenuItem(
                             'pb-menu-item-update',
-                            '⬇ Check for Updates',
+                            'Check for Updates',
                             () => {
                                 toggleMenu(false);
                                 if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
@@ -765,12 +768,12 @@ class MainActivity : ComponentActivity() {
 
                         const closeItem = createMenuItem(
                             'pb-menu-item-close',
-                            '✕ Close Menu',
+                            'Close Menu',
                             () => {
                                 toggleMenu(false);
                             }
                         );
-                        closeItem.style.color = '#9bb6d0';
+                        closeItem.style.color = '#9e95c2';
                         closeItem.style.border = '1px solid rgba(255, 255, 255, 0.1)';
 
                         menuPanel.appendChild(layoutItem);
@@ -1030,8 +1033,8 @@ class MainActivity : ComponentActivity() {
             setPadding(padH, padV, padH, padV)
 
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#E6111C2B"))
-                setStroke(dp(2), Color.parseColor("#FFD76D"))
+                setColor(Color.parseColor("#F01A1630"))
+                setStroke(dp(2), Color.parseColor("#FFCB3A"))
                 cornerRadius = dp(14).toFloat()
             }
             background = bg
@@ -1043,12 +1046,12 @@ class MainActivity : ComponentActivity() {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 topMargin = dp(20)
             }
-            elevation = dp(10).toFloat()
+            elevation = dp(12).toFloat()
         }
 
         val titleView = TextView(this).apply {
-            text = "🎮 PokéBonk Update Available"
-            setTextColor(Color.parseColor("#FFD76D"))
+            text = "PokéBonk Update Available"
+            setTextColor(Color.parseColor("#FFCB3A"))
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
         }
@@ -1069,7 +1072,7 @@ class MainActivity : ComponentActivity() {
 
         val laterBtn = Button(this).apply {
             text = "Later"
-            setTextColor(Color.parseColor("#9BB6D0"))
+            setTextColor(Color.parseColor("#9E95C2"))
             textSize = 12f
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -1083,11 +1086,11 @@ class MainActivity : ComponentActivity() {
 
         val updateBtn = Button(this).apply {
             text = "Update Now"
-            setTextColor(Color.parseColor("#1D1D1D"))
+            setTextColor(Color.parseColor("#120E24"))
             textSize = 12f
             setTypeface(null, Typeface.BOLD)
             val btnBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#FFCF4A"))
+                setColor(Color.parseColor("#FFCB3A"))
                 cornerRadius = dp(8).toFloat()
             }
             background = btnBg
