@@ -424,9 +424,14 @@ function createMainWindow() {
     minWidth: 960,
     minHeight: 540,
     show: false,
-    backgroundColor: '#0e0a20',
+    backgroundColor: '#1a1630',
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#1a1630',
+      symbolColor: '#ffffff',
+      height: 36
+    },
     title: 'PokéBonk',
     icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
