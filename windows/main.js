@@ -460,7 +460,7 @@ function createLauncherWindow() {
     maximizable: false,
     show: false,
     title: 'PokéBonk Launcher',
-    backgroundColor: '#09111b',
+    backgroundColor: '#0e0a20',
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,

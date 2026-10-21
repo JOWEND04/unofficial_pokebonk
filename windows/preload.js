@@ -28,22 +28,26 @@ window.addEventListener('DOMContentLoaded', () => {
             pointer-events: auto;
         }
         .pb-win-btn {
-            background: rgba(26, 22, 48, 0.95); color: #ffcb3a; border: 1.5px solid rgba(255, 203, 58, 0.5);
-            width: 36px; height: 36px; border-radius: 10px; font-weight: 800; font-size: 15px;
+            background: rgba(30, 24, 60, 0.88); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.18);
+            width: 32px; height: 32px; border-radius: 999px; font-weight: 800; font-size: 14px;
             display: flex; align-items: center; justify-content: center; cursor: pointer;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+            box-shadow: 0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             pointer-events: auto !important;
-            transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
+            transition: all 0.15s ease;
         }
-        .pb-win-btn:hover { background: #ff5a5f; border-color: #ff5a5f; color: #ffffff; transform: translateY(-1px); }
+        .pb-win-btn:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.3); color: #ffffff; transform: translateY(-1.5px); }
+        .pb-win-btn:active { transform: translateY(1.5px); box-shadow: 0 1px 0 rgba(14, 10, 32, 0.8); }
+        #pb-close-btn:hover { background: #ff5a5f !important; border-color: #ff5a5f !important; color: #ffffff !important; box-shadow: 0 3px 0 #b33035, 0 4px 12px rgba(255, 90, 95, 0.35) !important; }
+        #pb-close-btn:active { box-shadow: 0 1px 0 #b33035 !important; }
 
         #pb-controller-toast {
-            position: fixed; top: 18px; right: 95px; z-index: 2147483647;
-            background: rgba(26, 22, 48, 0.95); color: #ffcb3a; border: 1.5px solid #ffcb3a;
-            padding: 10px 18px; border-radius: 12px; font-family: "Nunito", "Segoe UI", system-ui, sans-serif;
-            font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.7), 0 0 12px rgba(255, 203, 58, 0.2);
-            backdrop-filter: blur(8px);
+            position: fixed; top: 14px; right: 92px; z-index: 2147483647;
+            background: rgba(26, 20, 56, 0.94); color: #ffcc33; border: 1px solid rgba(255, 204, 51, 0.45);
+            padding: 8px 16px; border-radius: 999px; font-family: "Nunito", system-ui, -apple-system, sans-serif;
+            font-size: 12.5px; font-weight: 800; letter-spacing: 0.02em;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(255, 204, 51, 0.2);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
         }
 
@@ -54,13 +58,13 @@ window.addEventListener('DOMContentLoaded', () => {
             transition: background 0.15s ease, outline 0.15s ease;
         }
         .st-row.tog:focus, .st-row.tog.pad-focus {
-            outline: 3px solid #ffcb3a !important;
+            outline: 2.5px solid #ffcc33 !important;
             outline-offset: 2px !important;
             border-radius: 12px !important;
-            background: rgba(255, 203, 58, 0.15) !important;
+            background: rgba(255, 204, 51, 0.15) !important;
         }
         .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
-            filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
+            filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.8)) !important;
         }
     `;
     document.head.appendChild(style);

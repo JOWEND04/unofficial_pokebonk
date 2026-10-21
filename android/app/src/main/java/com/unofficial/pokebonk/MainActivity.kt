@@ -405,17 +405,19 @@ class MainActivity : ComponentActivity() {
                             right: '18px',
                             bottom: '18px',
                             zIndex: '2147483647',
-                            background: 'rgba(26, 22, 48, 0.95)',
-                            color: '#ffcb3a',
-                            border: '1.5px solid #ffcb3a',
-                            borderRadius: '12px',
-                            padding: '10px 18px',
-                            font: '700 13px/1.2 "Nunito", system-ui, sans-serif',
+                            background: 'rgba(26, 20, 56, 0.94)',
+                            color: '#ffcc33',
+                            border: '1px solid rgba(255, 204, 51, 0.45)',
+                            borderRadius: '999px',
+                            padding: '9px 18px',
+                            font: '800 12.5px/1.2 "Nunito", system-ui, sans-serif',
                             opacity: '0',
                             transition: 'opacity 0.25s ease',
                             pointerEvents: 'none',
                             userSelect: 'none',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.7), 0 0 12px rgba(255, 203, 58, 0.2)'
+                            boxShadow: '0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(255, 204, 51, 0.2)',
+                            backdropFilter: 'blur(10px)',
+                            webkitBackdropFilter: 'blur(10px)'
                         });
                         document.body.appendChild(el);
                         return el;
@@ -544,13 +546,13 @@ class MainActivity : ComponentActivity() {
                             transition: background 0.15s ease, outline 0.15s ease;
                         }
                         .st-row.tog:focus, .st-row.tog.pad-focus {
-                            outline: 3px solid #ffcb3a !important;
+                            outline: 2.5px solid #ffcc33 !important;
                             outline-offset: 2px !important;
                             border-radius: 12px !important;
-                            background: rgba(255, 203, 58, 0.15) !important;
+                            background: rgba(255, 204, 51, 0.15) !important;
                         }
                         .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
-                            filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
+                            filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.8)) !important;
                         }
                         @media (max-height: 640px), (orientation: landscape) {
                             .mm-top {
@@ -668,12 +670,13 @@ class MainActivity : ComponentActivity() {
                         container.id = 'pb-android-overlay-container';
                         Object.assign(container.style, {
                             position: 'fixed',
-                            right: '16px',
-                            top: '16px',
+                            left: 'calc(14px + var(--sl, 0px))',
+                            top: '14px',
+                            right: 'auto',
                             zIndex: '2147483647',
                             display: 'flex',
                             flexDirection: 'column',
-                            alignItems: 'flex-end',
+                            alignItems: 'flex-start',
                             userSelect: 'none'
                         });
 
@@ -681,17 +684,19 @@ class MainActivity : ComponentActivity() {
                         menuToggleBtn.id = 'pb-android-menu-toggle';
                         menuToggleBtn.textContent = 'MENU';
                         Object.assign(menuToggleBtn.style, {
-                            padding: '8px 16px',
-                            borderRadius: '10px',
-                            border: '1.5px solid #ffcb3a',
-                            background: 'rgba(26, 22, 48, 0.94)',
-                            color: '#ffcb3a',
+                            padding: '7px 16px',
+                            borderRadius: '999px',
+                            border: '1px solid rgba(255, 255, 255, 0.22)',
+                            background: 'rgba(30, 24, 60, 0.88)',
+                            color: '#ffffff',
                             font: '800 12px/1.2 "Nunito", system-ui, sans-serif',
-                            letterSpacing: '0.08em',
+                            letterSpacing: '0.06em',
                             textTransform: 'uppercase',
                             cursor: 'pointer',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                            backdropFilter: 'blur(8px)'
+                            boxShadow: '0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4)',
+                            backdropFilter: 'blur(10px)',
+                            webkitBackdropFilter: 'blur(10px)',
+                            transition: 'all 0.15s ease'
                         });
 
                         const menuPanel = document.createElement('div');
@@ -703,11 +708,12 @@ class MainActivity : ComponentActivity() {
                             marginTop: '8px',
                             padding: '12px',
                             width: '250px',
-                            borderRadius: '14px',
-                            border: '1.5px solid #ffcb3a',
-                            background: 'rgba(26, 22, 48, 0.98)',
-                            boxShadow: '0 12px 36px rgba(0,0,0,0.85), 0 0 16px rgba(255, 203, 58, 0.15)',
-                            backdropFilter: 'blur(10px)'
+                            borderRadius: '18px',
+                            border: '1px solid rgba(255, 255, 255, 0.16)',
+                            background: 'radial-gradient(circle at 50% 0%, rgba(38, 30, 82, 0.96) 0%, rgba(20, 16, 44, 0.96) 100%)',
+                            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                            backdropFilter: 'blur(14px)',
+                            webkitBackdropFilter: 'blur(14px)'
                         });
 
                         function createMenuItem(id, text, onClick) {
@@ -715,15 +721,16 @@ class MainActivity : ComponentActivity() {
                             item.id = id;
                             item.textContent = text;
                             Object.assign(item.style, {
-                                padding: '11px 14px',
-                                borderRadius: '10px',
-                                border: '1px solid rgba(255, 203, 58, 0.25)',
-                                background: 'rgba(255, 255, 255, 0.05)',
+                                padding: '10px 14px',
+                                borderRadius: '999px',
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                background: 'rgba(255, 255, 255, 0.07)',
                                 color: '#ffffff',
-                                font: '700 12px/1.2 "Nunito", system-ui, sans-serif',
+                                font: '800 12px/1.2 "Nunito", system-ui, sans-serif',
                                 letterSpacing: '0.02em',
                                 textAlign: 'left',
                                 cursor: 'pointer',
+                                boxShadow: '0 2px 0 rgba(0, 0, 0, 0.25)',
                                 transition: 'all 0.15s ease'
                             });
                             item.addEventListener('click', (e) => {
@@ -747,8 +754,17 @@ class MainActivity : ComponentActivity() {
                             const isVisible = menuPanel.style.display === 'flex';
                             const next = typeof show === 'boolean' ? show : !isVisible;
                             menuPanel.style.display = next ? 'flex' : 'none';
-                            menuToggleBtn.style.background = next ? '#ffcb3a' : 'rgba(26, 22, 48, 0.94)';
-                            menuToggleBtn.style.color = next ? '#120e24' : '#ffcb3a';
+                            if (next) {
+                                menuToggleBtn.style.background = 'linear-gradient(180deg, #ffe066 0%, #ffcc33 55%, #f2a516 100%)';
+                                menuToggleBtn.style.color = '#2a2440';
+                                menuToggleBtn.style.border = '1px solid rgba(255, 255, 255, 0.4)';
+                                menuToggleBtn.style.boxShadow = '0 3px 0 #b37400, 0 4px 12px rgba(242, 165, 22, 0.35)';
+                            } else {
+                                menuToggleBtn.style.background = 'rgba(30, 24, 60, 0.88)';
+                                menuToggleBtn.style.color = '#ffffff';
+                                menuToggleBtn.style.border = '1px solid rgba(255, 255, 255, 0.22)';
+                                menuToggleBtn.style.boxShadow = '0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4)';
+                            }
                             if (next) {
                                 updateMenuButtonText();
                                 setTimeout(() => document.addEventListener('click', onOutsideClick), 10);
@@ -817,8 +833,9 @@ class MainActivity : ComponentActivity() {
                                 toggleMenu(false);
                             }
                         );
-                        closeItem.style.color = '#9e95c2';
-                        closeItem.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                        closeItem.style.color = '#9aa4b8';
+                        closeItem.style.background = 'rgba(255, 255, 255, 0.04)';
+                        closeItem.style.border = '1px solid rgba(255, 255, 255, 0.08)';
 
                         menuPanel.appendChild(layoutItem);
                         menuPanel.appendChild(sensItem);
@@ -1076,14 +1093,14 @@ class MainActivity : ComponentActivity() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val padH = dp(16)
-            val padV = dp(12)
+            val padH = dp(18)
+            val padV = dp(14)
             setPadding(padH, padV, padH, padV)
 
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#F01A1630"))
-                setStroke(dp(2), Color.parseColor("#FFCB3A"))
-                cornerRadius = dp(14).toFloat()
+                setColor(Color.parseColor("#F2171236"))
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+                cornerRadius = dp(18).toFloat()
             }
             background = bg
 
@@ -1099,7 +1116,7 @@ class MainActivity : ComponentActivity() {
 
         val titleView = TextView(this).apply {
             text = "PokéBonk Update Available"
-            setTextColor(Color.parseColor("#FFCB3A"))
+            setTextColor(Color.parseColor("#FFCC33"))
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
         }
@@ -1107,9 +1124,9 @@ class MainActivity : ComponentActivity() {
 
         val descView = TextView(this).apply {
             text = "New native wrapper update ($newVersionName) is ready."
-            setTextColor(Color.parseColor("#EDF4FF"))
+            setTextColor(Color.parseColor("#9AA4B8"))
             textSize = 12f
-            setPadding(0, dp(4), 0, dp(10))
+            setPadding(0, dp(4), 0, dp(12))
         }
         card.addView(descView)
 
@@ -1120,10 +1137,15 @@ class MainActivity : ComponentActivity() {
 
         val laterBtn = Button(this).apply {
             text = "Later"
-            setTextColor(Color.parseColor("#9E95C2"))
+            setTextColor(Color.parseColor("#9AA4B8"))
             textSize = 12f
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            val btnBg = GradientDrawable().apply {
+                setColor(Color.parseColor("#14FFFFFF"))
+                setStroke(dp(1), Color.parseColor("#1FFFFFFF"))
+                cornerRadius = dp(999).toFloat()
+            }
+            background = btnBg
+            setPadding(dp(14), dp(6), dp(14), dp(6))
             setOnClickListener {
                 val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
                 prefs.edit().putLong(prefDismissedReleaseId, releaseId).apply()
@@ -1132,17 +1154,22 @@ class MainActivity : ComponentActivity() {
         }
         actionsRow.addView(laterBtn)
 
+        val space = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(8), ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        actionsRow.addView(space)
+
         val updateBtn = Button(this).apply {
             text = "Update Now"
-            setTextColor(Color.parseColor("#120E24"))
+            setTextColor(Color.parseColor("#2A2440"))
             textSize = 12f
             setTypeface(null, Typeface.BOLD)
             val btnBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#FFCB3A"))
-                cornerRadius = dp(8).toFloat()
+                setColor(Color.parseColor("#FFCC33"))
+                cornerRadius = dp(999).toFloat()
             }
             background = btnBg
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setPadding(dp(16), dp(6), dp(16), dp(6))
             setOnClickListener {
                 startInAppDownload(card, downloadUrl, apkAssetId)
             }
@@ -1182,7 +1209,7 @@ class MainActivity : ComponentActivity() {
 
         val progressTitle = TextView(this).apply {
             text = "Downloading PokéBonk Update…"
-            setTextColor(Color.parseColor("#FFD76D"))
+            setTextColor(Color.parseColor("#FFCC33"))
             textSize = 13f
             setTypeface(null, Typeface.BOLD)
         }
@@ -1204,7 +1231,7 @@ class MainActivity : ComponentActivity() {
 
         val statusText = TextView(this).apply {
             text = "Connecting…"
-            setTextColor(Color.parseColor("#EDF4FF"))
+            setTextColor(Color.parseColor("#9AA4B8"))
             textSize = 11f
         }
         container.addView(statusText)
@@ -1291,7 +1318,7 @@ class MainActivity : ComponentActivity() {
                 mainHandler.post {
                     isDownloading = false
                     statusText.text = "Download failed: ${e.message}"
-                    statusText.setTextColor(Color.parseColor("#FF6F61"))
+                    statusText.setTextColor(Color.parseColor("#FF5A5F"))
                     Toast.makeText(this, "Update download failed: ${e.message}", Toast.LENGTH_LONG).show()
                     mainHandler.postDelayed({ dismissUpdateBanner() }, 3500)
                 }

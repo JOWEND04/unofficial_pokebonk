@@ -6,21 +6,22 @@
     <title>PokéBonk Desktop Client</title>
     <style>
       :root {
-        --bg-deep: #0c0919;
-        --bg-mid: #16122c;
-        --bg-top: #221a42;
-        --panel: #1c1636;
-        --panel-inner: #130f26;
-        --border-gold: rgba(255, 203, 58, 0.4);
-        --border-gold-glow: rgba(255, 203, 58, 0.18);
-        --accent-gold: #ffcb3a;
-        --accent-gold-dark: #f2a516;
+        --ink: #2a2440;
+        --ink-muted: #9aa4b8;
+        --paper: #ffffff;
+        --bg-deep: #0e0a20;
+        --bg-mid: #171236;
+        --bg-top: #261e52;
+        --card-bg: rgba(22, 17, 44, 0.65);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --accent-yellow: #ffcc33;
+        --accent-yellow-d: #f2a516;
+        --accent-yellow-shadow: #b37400;
         --accent-red: #ff5a5f;
+        --accent-orange: #ff9a3a;
         --accent-blue: #3a8cff;
         --accent-green: #36c96a;
-        --text-white: #ffffff;
-        --text-muted: #9e95c2;
-        --font: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+        --font: "Nunito", system-ui, -apple-system, sans-serif;
       }
 
       * {
@@ -34,13 +35,13 @@
         width: 100vw;
         height: 100vh;
         overflow: hidden;
-        background: radial-gradient(circle at 50% 0%, var(--bg-top) 0%, var(--bg-mid) 50%, var(--bg-deep) 100%);
-        color: var(--text-white);
+        background: radial-gradient(circle at 50% 0%, var(--bg-top) 0%, var(--bg-mid) 55%, var(--bg-deep) 100%);
+        color: #ffffff;
         font-family: var(--font);
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid rgba(255, 203, 58, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 20px;
       }
 
@@ -77,9 +78,9 @@
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        background: linear-gradient(180deg, var(--accent-red) 48%, #1a1433 48%, #1a1433 52%, #ffffff 52%);
+        background: linear-gradient(180deg, var(--accent-red) 48%, #1c1638 48%, #1c1638 52%, #ffffff 52%);
         border: 2px solid #ffffff;
-        box-shadow: 0 0 12px rgba(255, 90, 95, 0.5);
+        box-shadow: 0 0 10px rgba(255, 90, 95, 0.45);
         position: relative;
         flex-shrink: 0;
       }
@@ -94,8 +95,7 @@
         transform: translate(-50%, -50%);
         border-radius: 50%;
         background: #ffffff;
-        border: 2px solid #1a1433;
-        box-shadow: 0 0 6px rgba(255, 203, 58, 0.8);
+        border: 2px solid #1c1638;
       }
 
       .title-group {
@@ -111,30 +111,28 @@
 
       .brand-title {
         font-size: 24px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        background: linear-gradient(180deg, #ffffff 30%, var(--accent-gold) 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        color: #ffffff;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
       }
 
       .badge {
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 800;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        padding: 2px 7px;
-        border-radius: 6px;
-        background: rgba(255, 203, 58, 0.15);
-        border: 1px solid var(--accent-gold);
-        color: var(--accent-gold);
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--accent-orange), var(--accent-red));
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(255, 90, 95, 0.35);
       }
 
       .brand-sub {
         font-size: 12px;
         font-weight: 600;
-        color: var(--text-muted);
+        color: var(--ink-muted);
         letter-spacing: 0.02em;
         margin-top: 1px;
       }
@@ -148,14 +146,14 @@
       .win-btn {
         width: 28px;
         height: 28px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.05);
-        color: var(--text-muted);
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--ink-muted);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: bold;
         cursor: pointer;
         transition: all 0.18s ease;
@@ -169,11 +167,12 @@
 
       /* Status Display */
       .status-card {
-        background: var(--panel-inner);
-        border: 1px solid var(--border-gold);
-        border-radius: 14px;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
         padding: 14px 16px;
-        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+        box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(12px);
         margin: 14px 0;
         position: relative;
         overflow: hidden;
@@ -190,8 +189,8 @@
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: var(--accent-gold);
-        box-shadow: 0 0 10px var(--accent-gold);
+        background: var(--accent-yellow);
+        box-shadow: 0 0 8px var(--accent-yellow);
         flex-shrink: 0;
         transition: background 0.3s, box-shadow 0.3s;
       }
@@ -199,14 +198,13 @@
       .status-title {
         font-size: 14px;
         font-weight: 800;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        color: var(--text-white);
+        letter-spacing: 0.02em;
+        color: #ffffff;
       }
 
       .status-desc {
         font-size: 12px;
-        color: var(--text-muted);
+        color: var(--ink-muted);
         line-height: 1.4;
         margin-left: 20px;
       }
@@ -225,7 +223,7 @@
       .progress-bar {
         height: 100%;
         width: 0%;
-        background: linear-gradient(90deg, var(--accent-gold) 0%, var(--accent-gold-dark) 100%);
+        background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-yellow-d) 100%);
         border-radius: 10px;
         transition: width 0.25s ease;
       }
@@ -234,57 +232,66 @@
       .actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: 12px;
       }
 
       button.btn {
         border: none;
-        border-radius: 12px;
+        border-radius: 999px;
         font-family: var(--font);
-        font-size: 13px;
+        font-size: 13.5px;
         font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        padding: 13px 16px;
+        letter-spacing: 0.02em;
+        padding: 13px 18px;
         cursor: pointer;
-        transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
       button.btn:hover {
+        filter: brightness(1.06);
         transform: translateY(-1.5px);
-        filter: brightness(1.08);
       }
 
       button.btn:active {
-        transform: translateY(0);
+        transform: translateY(1.5px);
       }
 
       .btn-primary {
-        background: linear-gradient(180deg, #ffdc4a 0%, var(--accent-gold-dark) 100%);
-        color: #120e24;
-        box-shadow: 0 6px 20px rgba(242, 165, 22, 0.45);
+        background: linear-gradient(180deg, #ffe066 0%, var(--accent-yellow) 55%, var(--accent-yellow-d) 100%);
+        color: var(--ink);
+        box-shadow: 0 4px 0 var(--accent-yellow-shadow), 0 6px 18px rgba(242, 165, 22, 0.35);
+      }
+
+      .btn-primary:active {
+        box-shadow: 0 1px 0 var(--accent-yellow-shadow);
       }
 
       .btn-secondary {
-        background: rgba(255, 255, 255, 0.06);
-        border: 1.5px solid rgba(255, 203, 58, 0.4);
-        color: var(--accent-gold);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        color: #ffffff;
+        box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
       }
 
       .btn-secondary:hover {
-        background: rgba(255, 203, 58, 0.12);
-        border-color: var(--accent-gold);
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+
+      .btn-secondary:active {
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
       }
 
       /* Status Styles */
-      .state-checking .status-indicator { background: var(--accent-gold); box-shadow: 0 0 10px var(--accent-gold); }
-      .state-success .status-indicator { background: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
-      .state-downloading .status-indicator { background: var(--accent-blue); box-shadow: 0 0 10px var(--accent-blue); }
-      .state-error .status-indicator { background: var(--accent-red); box-shadow: 0 0 10px var(--accent-red); }
+      .state-checking .status-indicator { background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow); }
+      .state-success .status-indicator { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+      .state-downloading .status-indicator { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+      .state-error .status-indicator { background: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
     </style>
   </head>
   <body>
