@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                             style.innerHTML = `
                                 * { -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; outline: none !important; }
                                 html, body { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: #000 !important; }
-                                canvas { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
+                                canvas#game { width: 100vw !important; height: 100vh !important; display: block !important; object-fit: cover !important; }
                             `;
                             document.head.appendChild(style);
                             window.focus();
