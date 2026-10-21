@@ -2,7 +2,6 @@ const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog, shell } 
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const RPC = require('discord-rpc');
 const { autoUpdater } = require('electron-updater');
 
 // Ensure app-update.yml exists in resources so electron-updater never throws ENOENT in portable builds
@@ -62,161 +61,6 @@ let launcherWindow = null;
 let mainWindow = null;
 let sleepBlockerId = null;
 let updateQueued = false;
-
-// --- Discord Rich Presence Subsystem ---
-let rpcClient = null;
-let rpcConnected = false;
-let rpcReconnectTimer = null;
-let currentActivity = null;
-let runStartTime = null;
-
-const DEFAULT_DISCORD_CLIENT_ID = '1232165629046292551';
-const rpcConfigFile = path.join(app.getPath('userData'), 'discord-rpc.json');
-
-function getDiscordClientId() {
-  if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_ID.trim()) {
-    return process.env.DISCORD_CLIENT_ID.trim();
-  }
-  try {
-    if (fs.existsSync(rpcConfigFile)) {
-      const data = JSON.parse(fs.readFileSync(rpcConfigFile, 'utf8'));
-      if (data.clientId && data.clientId.trim()) {
-        return data.clientId.trim();
-      }
-    }
-  } catch (_) {}
-  return DEFAULT_DISCORD_CLIENT_ID;
-}
-
-function setDiscordClientId(id) {
-  try {
-    fs.writeFileSync(rpcConfigFile, JSON.stringify({ clientId: (id || '').trim() }, null, 2), 'utf8');
-    restartDiscordRPC();
-    return true;
-  } catch (e) {
-    console.error('Failed to save Discord Client ID:', e);
-    return false;
-  }
-}
-
-function restartDiscordRPC() {
-  if (rpcClient) {
-    try { rpcClient.destroy(); } catch (_) {}
-    rpcClient = null;
-  }
-  rpcConnected = false;
-  initDiscordRPC();
-}
-
-function applyDiscordActivity(data) {
-  currentActivity = data;
-  if (!rpcConnected || !rpcClient) return;
-
-  const activity = {
-    details: data.details || 'Playing PokéBonk',
-    state: data.state || 'In a Run',
-    instance: true
-  };
-
-  if (data.inRun && data.startTimestamp) {
-    activity.startTimestamp = data.startTimestamp;
-  }
-
-  activity.largeImageKey = 'logo2';
-  activity.largeImageText = 'PokéBonk';
-
-  rpcClient.setActivity(activity).catch(() => {
-    delete activity.largeImageKey;
-    delete activity.largeImageText;
-    rpcClient.setActivity(activity).catch(() => {});
-  });
-}
-
-function initDiscordRPC() {
-  clearTimeout(rpcReconnectTimer);
-  const clientId = getDiscordClientId();
-
-  if (rpcConnected && rpcClient) return;
-
-  try {
-    try {
-      RPC.register(clientId);
-    } catch (_) {}
-
-    if (rpcClient) {
-      try { rpcClient.destroy(); } catch (_) {}
-      rpcClient = null;
-    }
-
-    rpcClient = new RPC.Client({ transport: 'ipc' });
-
-    rpcClient.on('ready', () => {
-      rpcConnected = true;
-      if (currentActivity) {
-        applyDiscordActivity(currentActivity);
-      } else {
-        applyDiscordActivity({
-          details: 'Title Screen / Main Menu',
-          state: 'Choosing Pokémon & Settings',
-          inRun: false
-        });
-      }
-    });
-
-    rpcClient.on('error', () => {
-      rpcConnected = false;
-    });
-
-    if (rpcClient.transport) {
-      rpcClient.transport.on('close', () => {
-        rpcConnected = false;
-        clearTimeout(rpcReconnectTimer);
-        rpcReconnectTimer = setTimeout(() => {
-          initDiscordRPC();
-        }, 15000);
-      });
-    }
-
-    rpcClient.login({ clientId }).catch(() => {
-      rpcConnected = false;
-      clearTimeout(rpcReconnectTimer);
-      rpcReconnectTimer = setTimeout(() => {
-        initDiscordRPC();
-      }, 15000);
-    });
-
-  } catch (_) {
-    rpcConnected = false;
-    rpcReconnectTimer = setTimeout(() => {
-      initDiscordRPC();
-    }, 15000);
-  }
-}
-
-ipcMain.on('update-rpc', (event, data) => {
-  if (data.inRun) {
-    if (!runStartTime || data.resetTimer) {
-      runStartTime = Date.now();
-    }
-  } else {
-    runStartTime = null;
-  }
-
-  applyDiscordActivity({
-    details: data.details,
-    state: data.state,
-    inRun: Boolean(data.inRun),
-    startTimestamp: runStartTime
-  });
-});
-
-ipcMain.handle('get-discord-client-id', () => {
-  return getDiscordClientId();
-});
-
-ipcMain.handle('set-discord-client-id', (event, id) => {
-  return setDiscordClientId(id);
-});
 
 function sendLauncherStatus(status, payload = {}) {
   if (launcherWindow && !launcherWindow.isDestroyed()) {
@@ -460,7 +304,6 @@ function launchGameWindow() {
   });
 
   mainWindow.loadURL('https://pokebonk.com');
-  initDiscordRPC();
 }
 
 function createLauncherWindow() {
@@ -573,10 +416,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
     powerSaveBlocker.stop(sleepBlockerId);
-  }
-  if (rpcClient) {
-    try { rpcClient.destroy(); } catch (_) {}
-    rpcClient = null;
   }
 
   // If a new update was downloaded while the app was running and the user closed it,

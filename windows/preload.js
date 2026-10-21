@@ -155,60 +155,6 @@ window.addEventListener('DOMContentLoaded', () => {
         document.body.classList.remove('controller-active');
     });
 
-    // --- Enhanced Discord RPC Game State Scraper ---
-    let lastSentState = '';
-    let runActive = false;
-
-    setInterval(() => {
-        try {
-            const biomeElem = document.querySelector('.ht-biome');
-            const zoneElem = document.querySelector('.ht-zone');
-            const pkmnElem = document.querySelector('.slot:not(.empty) .nm, .hud-party .nm, [class*="hud-party"] [class*="nm"]');
-            const lvlElem = document.querySelector('.slot:not(.empty) .lvl, .hud-party .lvl, [class*="hud-party"] [class*="lvl"]');
-            const streakElem = document.querySelector('.streak, [class*="streak"]');
-
-            if (biomeElem && biomeElem.textContent && biomeElem.textContent.trim()) {
-                const biome = biomeElem.textContent.trim();
-                const zone = zoneElem && zoneElem.textContent ? zoneElem.textContent.trim() : '';
-                const details = zone ? `${biome} (${zone})` : biome;
-
-                let state = 'Surviving in Wilds';
-                if (pkmnElem && pkmnElem.textContent && pkmnElem.textContent.trim()) {
-                    const pkmn = pkmnElem.textContent.trim();
-                    const lvl = lvlElem && lvlElem.textContent ? ` Lv.${lvlElem.textContent.trim()}` : '';
-                    state = `Partner: ${pkmn}${lvl}`;
-                } else if (streakElem && streakElem.textContent && streakElem.textContent.trim()) {
-                    state = `Streak: ${streakElem.textContent.trim()}`;
-                }
-
-                const stateKey = `${details}|${state}`;
-                const justStartedRun = !runActive;
-                runActive = true;
-
-                if (stateKey !== lastSentState || justStartedRun) {
-                    lastSentState = stateKey;
-                    ipcRenderer.send('update-rpc', {
-                        details,
-                        state,
-                        inRun: true,
-                        resetTimer: justStartedRun
-                    });
-                }
-            } else {
-                runActive = false;
-                const menuKey = 'MENU';
-                if (lastSentState !== menuKey) {
-                    lastSentState = menuKey;
-                    ipcRenderer.send('update-rpc', {
-                        details: 'Title Screen / Main Menu',
-                        state: 'Choosing Pokémon & Settings',
-                        inRun: false
-                    });
-                }
-            }
-        } catch (_) {}
-    }, 4000);
-
     // Controller input mapping & Stick Sensitivity (cached in-memory for 0ms frame lookups)
     const SENSITIVITY_KEY = 'pb_stick_sensitivity';
     let cachedSensitivity = 1.0;
