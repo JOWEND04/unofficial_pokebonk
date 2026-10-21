@@ -1,10 +1,9 @@
 const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog, shell } = require('electron');
-const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
-// Ensure app-update.yml exists in resources so electron-updater never throws ENOENT in portable builds
+// Ensure app-update.yml exists in portable resources
 const updateConfigContent = [
   'owner: JOWEND04',
   'repo: unofficial_pokebonk_app',
@@ -21,25 +20,18 @@ if (process.resourcesPath) {
     if (!fs.existsSync(updateConfigPath)) {
       fs.writeFileSync(updateConfigPath, updateConfigContent, 'utf8');
     }
-  } catch (err) {
-    console.warn('Unable to write fallback app-update.yml to resources:', err.message);
-  }
+  } catch (_) {}
 }
-
-try {
-  const appPathConfig = path.join(app.getAppPath(), 'app-update.yml');
-  if (!fs.existsSync(appPathConfig)) {
-    fs.writeFileSync(appPathConfig, updateConfigContent, 'utf8');
-  }
-} catch (_) {}
 
 app.setPath('userData', path.join(app.getPath('appData'), 'PokeBonk'));
 
+// Single instance enforcement
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 }
 
+// Hardware & GPU acceleration switches
 app.commandLine.appendSwitch('enable-features', 'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController,CanvasOopRasterization');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
@@ -54,248 +46,49 @@ app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('enable-highres-timer');
-app.commandLine.appendSwitch('enable-quic');
-app.commandLine.appendSwitch('enable-tcp-fast-open');
 
-let launcherWindow = null;
 let mainWindow = null;
 let sleepBlockerId = null;
-let updateQueued = false;
 
-function sendLauncherStatus(status, payload = {}) {
-  if (launcherWindow && !launcherWindow.isDestroyed()) {
-    launcherWindow.webContents.send('launcher-status', { status, ...payload });
-  }
-}
-
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
-
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'JOWEND04',
-  repo: 'unofficial_pokebonk_app',
-  private: false,
-  releaseType: 'release'
-});
-
-autoUpdater.on('checking-for-update', () => {
-  sendLauncherStatus('checking', { message: 'Checking for updates…' });
-});
-
-autoUpdater.on('update-available', (info) => {
-  sendLauncherStatus('update-available', {
-    version: info && info.version ? info.version : 'Unknown',
-    message: 'An update is available.'
-  });
-});
-
-autoUpdater.on('update-not-available', () => {
-  sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
-});
-
-autoUpdater.on('download-progress', (progress) => {
-  sendLauncherStatus('downloading', {
-    percent: Math.round(progress.percent || 0),
-    message: 'Downloading update…'
-  });
-});
-
-autoUpdater.on('error', (error) => {
-  const msg = error && error.message ? error.message : '';
-  if (msg.includes('latest.yml') || msg.includes('404') || msg.includes('app-update.yml') || msg.includes('ENOENT')) {
-    sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
-  } else {
-    sendLauncherStatus('error', {
-      message: 'Unable to check for updates right now.'
-    });
-  }
-});
-
-let downloadedUpdateFile = null;
-
-function applyUpdateAndRestart(relaunch = true) {
-  const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || (app.isPackaged ? process.execPath : null);
-
-  // If downloadedUpdateFile is not cached yet, look in pending directory
-  if (!downloadedUpdateFile || !fs.existsSync(downloadedUpdateFile)) {
-    try {
-      const pendingDir = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'pokebonk-updater', 'pending');
-      if (fs.existsSync(pendingDir)) {
-        const files = fs.readdirSync(pendingDir)
-          .filter(f => f.toLowerCase().endsWith('.exe'))
-          .map(f => path.join(pendingDir, f));
-        if (files.length > 0) {
-          files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-          downloadedUpdateFile = files[0];
-        }
-      }
-    } catch (_) {}
-  }
-
-  // If running portable or installed on Windows, overwrite the target executable in-place
-  if (targetExe && downloadedUpdateFile && fs.existsSync(downloadedUpdateFile)) {
-    const tempJs = path.join(app.getPath('temp'), `pb_updater_${Date.now()}.js`);
-    const escapedSource = downloadedUpdateFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const escapedTarget = targetExe.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-    const jsContent = [
-      'var fso = new ActiveXObject("Scripting.FileSystemObject");',
-      'var shell = new ActiveXObject("WScript.Shell");',
-      `var pid = ${process.pid};`,
-      `var source = "${escapedSource}";`,
-      `var target = "${escapedTarget}";`,
-      `var shouldRelaunch = ${relaunch ? 'true' : 'false'};`,
-      '',
-      'try {',
-      '    var wmi = GetObject("winmgmts:");',
-      '    for (var i = 0; i < 40; i++) {',
-      '        var procs = wmi.ExecQuery("Select * from Win32_Process Where ProcessId = " + pid);',
-      '        if (procs.Count === 0) break;',
-      '        WScript.Sleep(250);',
-      '    }',
-      '} catch (_) {',
-      '    WScript.Sleep(1500);',
-      '}',
-      '',
-      'var copied = false;',
-      'for (var j = 0; j < 30; j++) {',
-      '    try {',
-      '        fso.CopyFile(source, target, true);',
-      '        copied = true;',
-      '        break;',
-      '    } catch (_) {',
-      '        WScript.Sleep(300);',
-      '    }',
-      '}',
-      '',
-      'if (copied && shouldRelaunch) {',
-      '    try {',
-      '        shell.Run(\'"\' + target + \'"\', 1, false);',
-      '    } catch (_) {}',
-      '}',
-      '',
-      'try {',
-      '    fso.DeleteFile(WScript.ScriptFullName, true);',
-      '} catch (_) {}'
-    ].join('\r\n');
-
-    try {
-      fs.writeFileSync(tempJs, jsContent, 'utf8');
-      const child = spawn('wscript.exe', [tempJs], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
-      app.exit(0);
-      return;
-    } catch (e) {
-      console.error('Failed to spawn portable replacement script via wscript:', e);
-    }
-  }
-
-  // Fallback to electron-updater default
-  try {
-    autoUpdater.quitAndInstall(false, true);
-  } catch (e) {
-    app.relaunch();
-    app.exit(0);
-  }
-}
-
-autoUpdater.on('update-downloaded', (info) => {
-  if (info && info.downloadedFile) {
-    downloadedUpdateFile = info.downloadedFile;
-  } else if (autoUpdater.downloadedUpdateHelper && autoUpdater.downloadedUpdateHelper.file) {
-    downloadedUpdateFile = autoUpdater.downloadedUpdateHelper.file;
-  }
-
-  sendLauncherStatus('ready', { message: 'Update downloaded. Restart to install it.' });
-
-  if (updateQueued) {
-    dialog.showMessageBox(launcherWindow || mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'A new version of PokéBonk has been downloaded. Restart now to update?',
-      buttons: ['Restart', 'Later']
-    }).then((result) => {
-      if (result.response === 0) {
-        applyUpdateAndRestart(true);
-      }
-    }).catch(() => {});
-  }
-});
-
-function launchGameWindow() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.close();
-    }
-    return;
-  }
-
-  sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
-
+function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
+    width: 1280,
+    height: 720,
+    minWidth: 960,
+    minHeight: 540,
     show: false,
-    useContentSize: true,
-    fullscreen: true,
-    frame: false,
+    backgroundColor: '#0e0a20',
     autoHideMenuBar: true,
-    backgroundColor: '#000000',
     title: 'PokéBonk',
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: false,
+      contextIsolation: true,
       nodeIntegration: false,
-      zoomFactor: 1.0,
       backgroundThrottling: false,
-      spellcheck: false,
-      devTools: false,
-      enableWebSQL: false,
-      v8CacheOptions: 'bypassHeatCheckAndEagerCompile'
+      spellcheck: false
     }
   });
-
-  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.close();
+    if (!sleepBlockerId) {
+      sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
     }
-    setTimeout(() => {
-      if (app.isPackaged) {
-        autoUpdater.checkForUpdates().catch(() => {});
-      }
-    }, 5000);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    const isInternal = ['pokebonk.com', 'solais.cloud'].some(domain => url.toLowerCase().includes(domain));
-    if (isInternal) {
-      return { action: 'allow' };
+    if (!url.includes('pokebonk.com') && !url.includes('solais.cloud')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
     }
-    // Open external links (Discord, Twitter, Google, etc.) in user's default browser
-    shell.openExternal(url).catch(() => {});
-    return { action: 'deny' };
+    return { action: 'allow' };
   });
 
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown') {
-      if (input.key === 'F11' || (input.alt && input.key === 'Enter')) {
-        const isFull = mainWindow.isFullScreen();
-        mainWindow.setFullScreen(!isFull);
-        event.preventDefault();
-      } else if (input.key === 'F5') {
-        mainWindow.reload();
-        event.preventDefault();
-      } else if (input.alt && input.key === 'F4') {
-        app.exit(0);
-      }
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.includes('pokebonk.com') && !url.includes('solais.cloud')) {
+      event.preventDefault();
+      shell.openExternal(url);
     }
   });
 
@@ -304,127 +97,94 @@ function launchGameWindow() {
   });
 
   mainWindow.loadURL('https://pokebonk.com');
+
+  // Trigger silent background update check
+  setTimeout(() => {
+    checkForUpdatesSilent();
+  }, 4000);
 }
 
-function createLauncherWindow() {
-  launcherWindow = new BrowserWindow({
-    width: 520,
-    height: 360,
-    frame: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    show: false,
-    title: 'PokéBonk Launcher',
-    backgroundColor: '#0e0a20',
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
-  });
-
-  launcherWindow.setMenuBarVisibility(false);
-
-  launcherWindow.once('ready-to-show', () => {
-    launcherWindow.show();
-
-    if (app.isPackaged) {
-      sendLauncherStatus('checking', { message: 'Checking for updates…' });
-      autoUpdater.checkForUpdates().catch(() => {});
-    } else {
-      sendLauncherStatus('up-to-date', { message: 'Development build — updater disabled.' });
-    }
-  });
-
-  launcherWindow.on('closed', () => {
-    launcherWindow = null;
-    if (!mainWindow) {
-      app.quit();
-    }
-  });
-
-  launcherWindow.loadFile(path.join(__dirname, 'launcher.html'));
+// Background Auto-Updater
+function checkForUpdatesSilent() {
+  try {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.checkForUpdates().catch(() => {});
+  } catch (_) {}
 }
 
-ipcMain.on('launch-game', () => {
-  launchGameWindow();
+autoUpdater.on('update-downloaded', (info) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: `PokéBonk v${info.version} has been downloaded. Restart now to apply?`,
+      buttons: ['Restart & Update', 'Later']
+    }).then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  }
 });
 
-ipcMain.on('update-game', async () => {
-  if (!app.isPackaged) {
-    sendLauncherStatus('error', { message: 'Updater is disabled in development mode.' });
-    return;
+// IPC handlers
+ipcMain.on('toggle-fullscreen', () => {
+  if (mainWindow) {
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
   }
+});
 
-  updateQueued = true;
+ipcMain.on('reload-game', () => {
+  if (mainWindow) {
+    mainWindow.webContents.reloadIgnoringCache();
+  }
+});
 
-  try {
-    sendLauncherStatus('checking', { message: 'Checking for updates…' });
-    const result = await autoUpdater.checkForUpdates();
-    if (!result || !result.updateInfo || result.updateInfo.version === app.getVersion()) {
-      sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
+ipcMain.on('check-for-updates-manual', () => {
+  autoUpdater.checkForUpdates().then((result) => {
+    if (!result || !result.updateInfo) {
+      if (mainWindow) {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Up to Date',
+          message: 'You are running the latest version of PokéBonk.'
+        });
+      }
     }
-  } catch (error) {
-    const msg = error && error.message ? error.message : '';
-    if (msg.includes('already started') || msg.includes('downloading')) {
-      return;
-    }
-    if (msg.includes('latest.yml') || msg.includes('404') || msg.includes('app-update.yml') || msg.includes('ENOENT')) {
-      sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
-    } else {
-      sendLauncherStatus('error', {
-        message: 'Unable to check for updates right now.'
+  }).catch((err) => {
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Update Check',
+        message: 'Could not connect to update server: ' + (err.message || 'Unknown error')
       });
     }
-  }
+  });
 });
 
-ipcMain.on('install-update', () => {
-  applyUpdateAndRestart(true);
-});
-
-ipcMain.on('exit-launcher', () => {
+ipcMain.on('exit-app', () => {
   app.quit();
-});
-
-ipcMain.on('minimize-app', () => {
-  if (mainWindow) mainWindow.minimize();
-});
-
-ipcMain.on('quit-app', () => {
-  app.exit(0);
-});
-
-app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  } else if (launcherWindow) {
-    if (launcherWindow.isMinimized()) launcherWindow.restore();
-    launcherWindow.focus();
-  }
 });
 
 app.whenReady().then(() => {
   try {
     session.defaultSession.setSpellCheckerEnabled(false);
   } catch (_) {}
-  createLauncherWindow();
+  createMainWindow();
+});
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
 });
 
 app.on('window-all-closed', () => {
   if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
     powerSaveBlocker.stop(sleepBlockerId);
   }
-
-  // If a new update was downloaded while the app was running and the user closed it,
-  // overwrite the portable executable in-place so the next launch uses the new build!
-  if (downloadedUpdateFile && (process.env.PORTABLE_EXECUTABLE_FILE || app.isPackaged)) {
-    applyUpdateAndRestart(false);
-    return;
-  }
-
   session.defaultSession.cookies.flushStore().finally(() => {
     app.exit(0);
   });

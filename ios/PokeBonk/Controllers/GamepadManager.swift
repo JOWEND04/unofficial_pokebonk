@@ -1,6 +1,7 @@
 import Foundation
 import GameController
 import Combine
+import UIKit
 
 final class GamepadManager: ObservableObject {
     static let shared = GamepadManager()
@@ -27,7 +28,7 @@ final class GamepadManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Check if any controller is already connected
+        // Check already connected controller
         if let first = GCController.controllers().first {
             handleControllerConnected(first)
         }
@@ -38,7 +39,8 @@ final class GamepadManager: ObservableObject {
         DispatchQueue.main.async {
             self.isControllerConnected = true
             self.controllerName = name
-            print("[PokéBonk iOS] Controller connected: \(name)")
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
         }
     }
 
@@ -47,7 +49,8 @@ final class GamepadManager: ObservableObject {
         DispatchQueue.main.async {
             self.isControllerConnected = !remaining.isEmpty
             self.controllerName = remaining.first?.vendorName ?? ""
-            print("[PokéBonk iOS] Controller disconnected")
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.warning)
         }
     }
 }
