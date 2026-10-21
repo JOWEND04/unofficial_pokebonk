@@ -10,6 +10,7 @@ struct GameWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
+        // Modern WKWebView configuration with iOS 15.4+ fullscreen guard
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
