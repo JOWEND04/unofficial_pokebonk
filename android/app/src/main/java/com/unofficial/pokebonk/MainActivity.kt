@@ -106,13 +106,20 @@ class MainActivity : ComponentActivity() {
                 mediaPlaybackRequiresUserGesture = false
                 cacheMode = WebSettings.LOAD_DEFAULT
                 useWideViewPort = true
-                loadWithOverviewMode = true
+                loadWithOverviewMode = false
                 setSupportZoom(false)
                 builtInZoomControls = false
                 displayZoomControls = false
 
-                userAgentString =
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                // Use the device's native mobile Chrome User-Agent (stripping WebView-specific '; wv' and 'Version/4.0 ')
+                // so pokebonk.com renders its true mobile/touch layout and viewport without squishing or overlapping
+                val defaultUa = settings.userAgentString
+                val mobileChromeUa = if (defaultUa.contains("Chrome", ignoreCase = true)) {
+                    defaultUa.replace("; wv", "").replace("Version/4.0 ", "")
+                } else {
+                    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+                }
+                userAgentString = mobileChromeUa
             }
 
             webChromeClient = WebChromeClient()
@@ -509,6 +516,16 @@ class MainActivity : ComponentActivity() {
                         }
                         .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
                             filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
+                        }
+                        @media (max-height: 560px) {
+                            .mm-top {
+                                max-width: 52vw !important;
+                                right: calc(14px + var(--sr, 0px)) !important;
+                                left: auto !important;
+                            }
+                            .banner {
+                                top: calc(var(--hb, 64px) + 52px) !important;
+                            }
                         }
                     `;
                     document.head.appendChild(style);
