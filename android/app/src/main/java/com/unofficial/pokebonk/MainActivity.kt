@@ -324,9 +324,30 @@ class MainActivity : ComponentActivity() {
             """
             (function() {
                 const STORAGE_KEY = 'pb_swap_abxy';
+                const SENSITIVITY_KEY = 'pb_stick_sensitivity';
 
                 function isSwapped() {
                     return localStorage.getItem(STORAGE_KEY) === 'true';
+                }
+
+                function getStickSensitivity() {
+                    const raw = parseFloat(localStorage.getItem(SENSITIVITY_KEY) || '1.0');
+                    return isNaN(raw) ? 1.0 : Math.max(0.2, Math.min(3.0, raw));
+                }
+
+                function setStickSensitivity(val) {
+                    const clamped = Math.max(0.5, Math.min(2.0, Math.round(val * 20) / 20));
+                    localStorage.setItem(SENSITIVITY_KEY, String(clamped));
+                    const existingInput = document.querySelector('#pb-stick-sensitivity-input');
+                    if (existingInput) {
+                        existingInput.value = String(clamped);
+                        existingInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                    const sensItem = document.getElementById('pb-menu-item-sens');
+                    if (sensItem) {
+                        sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(clamped * 100) + '%';
+                    }
+                    return clamped;
                 }
 
                 function showToast(msg) {
@@ -362,6 +383,17 @@ class MainActivity : ComponentActivity() {
                     }, 1800);
                 }
 
+                const DEADZONE = 0.08;
+                function processAxis(val, sensitivity) {
+                    if (Math.abs(val) < DEADZONE) return 0;
+                    const sign = Math.sign(val);
+                    const normalized = (Math.abs(val) - DEADZONE) / (1 - DEADZONE);
+                    const scaled = normalized * sensitivity;
+                    return sign * Math.min(1.0, Math.max(0.0, scaled));
+                }
+
+                let lastTogNavTime = 0;
+
                 function applyLayoutPatch() {
                     try {
                         const nativeGetGamepads = navigator.getGamepads.bind(navigator);
@@ -369,10 +401,22 @@ class MainActivity : ComponentActivity() {
                         navigator.getGamepads = function () {
                             const rawPads = nativeGetGamepads();
                             const result = [null, null, null, null];
+                            const sensitivity = getStickSensitivity();
 
                             for (let i = 0; i < rawPads.length; i++) {
                                 const pad = rawPads[i];
                                 if (!pad) continue;
+
+                                // D-Pad Left / Right toggle support for active toggle switch row
+                                const activeTog = document.querySelector('.st-row.tog.pad-focus, .st-row.pad-focus:has(.switch)');
+                                if (activeTog) {
+                                    const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
+                                    const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
+                                    if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+                                        lastTogNavTime = performance.now();
+                                        activeTog.click();
+                                    }
+                                }
 
                                 const mappedButtons = pad.buttons.map((b) => ({
                                     pressed: !!(b && b.pressed),
@@ -390,13 +434,15 @@ class MainActivity : ComponentActivity() {
                                     mappedButtons[3] = b2;
                                 }
 
+                                const mappedAxes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
+
                                 result[i] = {
                                     id: pad.id,
                                     index: pad.index,
                                     connected: pad.connected,
                                     timestamp: pad.timestamp,
                                     mapping: 'standard',
-                                    axes: pad.axes ? pad.axes.map(v => Math.abs(v) < 0.08 ? 0 : v) : [],
+                                    axes: mappedAxes,
                                     buttons: mappedButtons,
                                     vibrationActuator: pad.vibrationActuator || null,
                                     hapticActuators: pad.hapticActuators || []
@@ -421,7 +467,133 @@ class MainActivity : ComponentActivity() {
                     if (layoutItem) {
                         layoutItem.textContent = isSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)';
                     }
+                    const sensItem = document.getElementById('pb-menu-item-sens');
+                    if (sensItem) {
+                        sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%';
+                    }
                 }
+
+                // Inject CSS for controller focus on toggle switches
+                if (!document.getElementById('pb-settings-gamepad-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'pb-settings-gamepad-style';
+                    style.innerHTML = `
+                        .st-row.tog {
+                            outline: none;
+                            cursor: pointer !important;
+                            border-radius: 12px;
+                            transition: background 0.15s ease, outline 0.15s ease;
+                        }
+                        .st-row.tog:focus, .st-row.tog.pad-focus {
+                            outline: 3px solid #ffcb3a !important;
+                            outline-offset: 2px !important;
+                            border-radius: 12px !important;
+                            background: rgba(255, 203, 58, 0.15) !important;
+                        }
+                        .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
+                            filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+
+                function setupSettingsGamepadPatch() {
+                    function patchSettings() {
+                        // 1. Enable controller focus on all toggle switch rows so controllers don't skip them
+                        const toggleRows = document.querySelectorAll('.st-row.tog, .st-row:has(.switch), .modal .st-row:has(button.switch)');
+                        for (const row of toggleRows) {
+                            if (!row.dataset.pbPatched) {
+                                row.dataset.pbPatched = 'true';
+                                row.setAttribute('tabindex', '0');
+                                row.style.cursor = 'pointer';
+
+                                row.addEventListener('keydown', (e) => {
+                                    if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                                        e.preventDefault();
+                                        row.click();
+                                    }
+                                });
+                            }
+                        }
+
+                        // 2. Inject Stick Sensitivity slider row into Settings under Controls
+                        const stBody = document.querySelector('.st-pane .st-body, .st-body');
+                        if (stBody && !stBody.querySelector('#pb-stick-sensitivity-row')) {
+                            const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
+                            const title = isEn ? 'Controller Stick Sensitivity' : 'Sensibilidad de los sticks';
+                            const sub = isEn ? 'Analog stick responsiveness (50% - 200%)' : 'Respuesta de los sticks del mando (50% - 200%)';
+
+                            const currentVal = getStickSensitivity();
+
+                            const row = document.createElement('div');
+                            row.id = 'pb-stick-sensitivity-row';
+                            row.className = 'st-row range';
+                            row.setAttribute('tabindex', '0');
+
+                            const span = document.createElement('span');
+                            span.textContent = title;
+                            const small = document.createElement('small');
+                            small.textContent = sub;
+                            span.appendChild(small);
+
+                            const input = document.createElement('input');
+                            input.id = 'pb-stick-sensitivity-input';
+                            input.className = 'st-range';
+                            input.type = 'range';
+                            input.min = '0.5';
+                            input.max = '2.0';
+                            input.step = '0.05';
+                            input.value = String(currentVal);
+
+                            const valDisplay = document.createElement('b');
+                            valDisplay.className = 'st-val';
+                            valDisplay.textContent = Math.round(currentVal * 100) + '%';
+
+                            const updateFill = () => {
+                                const p = ((Number(input.value) - 0.5) / (2.0 - 0.5)) * 100;
+                                input.style.setProperty('--p', p + '%');
+                            };
+                            updateFill();
+
+                            input.addEventListener('input', () => {
+                                const v = Number(input.value);
+                                valDisplay.textContent = Math.round(v * 100) + '%';
+                                updateFill();
+                                localStorage.setItem(SENSITIVITY_KEY, String(v));
+                                const sensItem = document.getElementById('pb-menu-item-sens');
+                                if (sensItem) {
+                                    sensItem.textContent = '🎯 Stick Sensitivity: ' + Math.round(v * 100) + '%';
+                                }
+                            });
+
+                            row.appendChild(span);
+                            row.appendChild(input);
+                            row.appendChild(valDisplay);
+
+                            const refRow = Array.from(stBody.querySelectorAll('.st-row')).find(r =>
+                                r.textContent.includes('Sensibilidad') ||
+                                r.textContent.includes('Sensitivity') ||
+                                r.textContent.includes('Zona muerta') ||
+                                r.textContent.includes('Deadzone') ||
+                                r.textContent.includes('Mando') ||
+                                r.textContent.includes('Gamepad')
+                            );
+
+                            if (refRow && refRow.nextSibling) {
+                                stBody.insertBefore(row, refRow.nextSibling);
+                            } else {
+                                stBody.appendChild(row);
+                            }
+                        }
+                    }
+
+                    const observer = new MutationObserver(() => {
+                        patchSettings();
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true });
+                    patchSettings();
+                }
+                setupSettingsGamepadPatch();
 
                 if (!window.__pbAndroidLayoutReady) {
                     window.__pbAndroidLayoutReady = true;
@@ -467,7 +639,7 @@ class MainActivity : ComponentActivity() {
                             gap: '8px',
                             marginTop: '8px',
                             padding: '10px',
-                            width: '230px',
+                            width: '240px',
                             borderRadius: '12px',
                             border: '1.5px solid #ffd76d',
                             background: 'rgba(9, 17, 27, 0.96)',
@@ -528,6 +700,17 @@ class MainActivity : ComponentActivity() {
                             }
                         );
 
+                        const sensItem = createMenuItem(
+                            'pb-menu-item-sens',
+                            '🎯 Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%',
+                            () => {
+                                const cur = getStickSensitivity();
+                                const next = cur >= 1.55 ? 0.8 : Math.round((cur + 0.2) * 10) / 10;
+                                const updated = setStickSensitivity(next);
+                                showToast('🎯 Stick Sensitivity: ' + Math.round(updated * 100) + '%');
+                            }
+                        );
+
                         const reloadItem = createMenuItem(
                             'pb-menu-item-reload',
                             '🔄 Reload Live Game',
@@ -563,6 +746,7 @@ class MainActivity : ComponentActivity() {
                         closeItem.style.border = '1px solid rgba(255, 255, 255, 0.1)';
 
                         menuPanel.appendChild(layoutItem);
+                        menuPanel.appendChild(sensItem);
                         menuPanel.appendChild(reloadItem);
                         menuPanel.appendChild(updateItem);
                         menuPanel.appendChild(closeItem);

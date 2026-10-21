@@ -44,6 +44,22 @@ window.addEventListener('DOMContentLoaded', () => {
             font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.7);
             pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
         }
+
+        .st-row.tog {
+            outline: none;
+            cursor: pointer !important;
+            border-radius: 12px;
+            transition: background 0.15s ease, outline 0.15s ease;
+        }
+        .st-row.tog:focus, .st-row.tog.pad-focus {
+            outline: 3px solid #ffcb3a !important;
+            outline-offset: 2px !important;
+            border-radius: 12px !important;
+            background: rgba(255, 203, 58, 0.15) !important;
+        }
+        .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
+            filter: drop-shadow(0 0 6px rgba(255, 203, 58, 0.8)) !important;
+        }
     `;
     document.head.appendChild(style);
 
@@ -115,7 +131,23 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
     }, 6000);
 
-    // Controller input mapping
+    // Controller input mapping & Stick Sensitivity
+    const SENSITIVITY_KEY = 'pb_stick_sensitivity';
+    function getStickSensitivity() {
+        const val = parseFloat(localStorage.getItem(SENSITIVITY_KEY) || '1.0');
+        return isNaN(val) ? 1.0 : Math.max(0.2, Math.min(3.0, val));
+    }
+    function setStickSensitivity(val) {
+        const clamped = Math.max(0.5, Math.min(2.0, Math.round(val * 20) / 20));
+        localStorage.setItem(SENSITIVITY_KEY, String(clamped));
+        const existingInput = document.querySelector('#pb-stick-sensitivity-input');
+        if (existingInput) {
+            existingInput.value = String(clamped);
+            existingInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return clamped;
+    }
+
     let swapABXY = localStorage.getItem('pb_swap_abxy') === 'true';
 
     function isNintendoDevice(idString) {
@@ -133,6 +165,11 @@ window.addEventListener('DOMContentLoaded', () => {
                     ? '🎮 Layout: AB/XY Swapped (Nintendo Labels: East = A)'
                     : '🎮 Layout: Standard Positional (South Button = Jump)'
             );
+        } else if (e.key === 'F8') {
+            const current = getStickSensitivity();
+            const next = current >= 1.95 ? 0.75 : Math.round((current + 0.25) * 100) / 100;
+            const updated = setStickSensitivity(next);
+            showToast(`🎯 Stick Sensitivity: ${Math.round(updated * 100)}% (Press F8 to cycle, or adjust in Settings)`);
         }
     });
 
@@ -140,20 +177,123 @@ window.addEventListener('DOMContentLoaded', () => {
         const nintendo = isNintendoDevice(e.gamepad.id);
         const name = nintendo ? 'Nintendo / Switch Mode Controller' : 'Xbox / XInput Controller';
         const modeText = swapABXY ? 'Swapped AB/XY' : 'Standard Positional';
-        showToast(`🎮 ${name} Connected [${modeText}] — Press F9 to swap A/B, Hold Start+Select to Quit`, 4500);
+        const sensText = `${Math.round(getStickSensitivity() * 100)}%`;
+        showToast(`🎮 ${name} Connected [${modeText} | Sens: ${sensText}] — F9: Swap layout | F8: Sensitivity`, 5000);
     });
 
     const DEADZONE = 0.08;
-    function cleanAxis(val) {
-        return Math.abs(val) < DEADZONE ? 0 : val;
+    function processAxis(val, sensitivity) {
+        if (Math.abs(val) < DEADZONE) return 0;
+        const sign = Math.sign(val);
+        const normalized = (Math.abs(val) - DEADZONE) / (1 - DEADZONE);
+        const scaled = normalized * sensitivity;
+        return sign * Math.min(1.0, Math.max(0.0, scaled));
     }
 
+    // Settings Gamepad Navigation & Custom Slider Injection
+    function setupSettingsGamepadPatch() {
+        function patchSettings() {
+            // 1. Enable controller focus on all toggle switch rows so controllers don't skip them
+            const toggleRows = document.querySelectorAll('.st-row.tog, .st-row:has(.switch), .modal .st-row:has(button.switch)');
+            for (const row of toggleRows) {
+                if (!row.dataset.pbPatched) {
+                    row.dataset.pbPatched = 'true';
+                    row.setAttribute('tabindex', '0');
+                    row.style.cursor = 'pointer';
+
+                    row.addEventListener('keydown', (e) => {
+                        if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                            e.preventDefault();
+                            row.click();
+                        }
+                    });
+                }
+            }
+
+            // 2. Inject Stick Sensitivity slider row into Settings under Controls / Gameplay
+            const stBody = document.querySelector('.st-pane .st-body, .st-body');
+            if (stBody && !stBody.querySelector('#pb-stick-sensitivity-row')) {
+                const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
+                const title = isEn ? 'Controller Stick Sensitivity' : 'Sensibilidad de los sticks';
+                const sub = isEn ? 'Analog stick responsiveness (50% - 200%)' : 'Respuesta de los sticks del mando (50% - 200%)';
+
+                const currentVal = getStickSensitivity();
+
+                const row = document.createElement('div');
+                row.id = 'pb-stick-sensitivity-row';
+                row.className = 'st-row range';
+                row.setAttribute('tabindex', '0');
+
+                const span = document.createElement('span');
+                span.textContent = title;
+                const small = document.createElement('small');
+                small.textContent = sub;
+                span.appendChild(small);
+
+                const input = document.createElement('input');
+                input.id = 'pb-stick-sensitivity-input';
+                input.className = 'st-range';
+                input.type = 'range';
+                input.min = '0.5';
+                input.max = '2.0';
+                input.step = '0.05';
+                input.value = String(currentVal);
+
+                const valDisplay = document.createElement('b');
+                valDisplay.className = 'st-val';
+                valDisplay.textContent = Math.round(currentVal * 100) + '%';
+
+                const updateFill = () => {
+                    const p = ((Number(input.value) - 0.5) / (2.0 - 0.5)) * 100;
+                    input.style.setProperty('--p', p + '%');
+                };
+                updateFill();
+
+                input.addEventListener('input', () => {
+                    const v = Number(input.value);
+                    valDisplay.textContent = Math.round(v * 100) + '%';
+                    updateFill();
+                    localStorage.setItem(SENSITIVITY_KEY, String(v));
+                });
+
+                row.appendChild(span);
+                row.appendChild(input);
+                row.appendChild(valDisplay);
+
+                // Insert near sensitivity / deadzone rows if present, or append
+                const refRow = Array.from(stBody.querySelectorAll('.st-row')).find(r =>
+                    r.textContent.includes('Sensibilidad') ||
+                    r.textContent.includes('Sensitivity') ||
+                    r.textContent.includes('Zona muerta') ||
+                    r.textContent.includes('Deadzone') ||
+                    r.textContent.includes('Mando') ||
+                    r.textContent.includes('Gamepad')
+                );
+
+                if (refRow && refRow.nextSibling) {
+                    stBody.insertBefore(row, refRow.nextSibling);
+                } else {
+                    stBody.appendChild(row);
+                }
+            }
+        }
+
+        const observer = new MutationObserver(() => {
+            patchSettings();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        patchSettings();
+    }
+    setupSettingsGamepadPatch();
+
     let quitHoldStart = 0;
+    let lastTogNavTime = 0;
     const nativeGetGamepads = navigator.getGamepads.bind(navigator);
 
     navigator.getGamepads = function () {
         const rawPads = nativeGetGamepads();
         const result = [null, null, null, null];
+        const sensitivity = getStickSensitivity();
 
         for (let i = 0; i < rawPads.length; i++) {
             const pad = rawPads[i];
@@ -163,6 +303,17 @@ window.addEventListener('DOMContentLoaded', () => {
             const hasButtonInput = pad.buttons && pad.buttons.some(b => b && b.pressed);
             if (hasStickInput || hasButtonInput) {
                 document.body.classList.add('controller-active');
+            }
+
+            // D-Pad Left / Right toggling for active toggle switch row
+            const activeTog = document.querySelector('.st-row.tog.pad-focus, .st-row.pad-focus:has(.switch)');
+            if (activeTog) {
+                const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
+                const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
+                if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+                    lastTogNavTime = performance.now();
+                    activeTog.click();
+                }
             }
 
             if (pad.buttons && pad.buttons[8]?.pressed && pad.buttons[9]?.pressed) {
@@ -192,7 +343,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 mappedButtons[3] = b2;
             }
 
-            const mappedAxes = pad.axes ? pad.axes.map(cleanAxis) : [];
+            const mappedAxes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
 
             result[i] = {
                 id: pad.id,
