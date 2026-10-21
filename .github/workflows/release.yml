@@ -151,18 +151,31 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            git add android/app/build.gradle.kts windows/package.json ios/PokeBonk/Resources/Info.plist ios/PokeBonk.xcodeproj/project.pbxproj 2>/dev/null || true
+            git add android/app/build.gradle.kts windows/package.json ios/PokeBonk/Resources/Info.plist ios/PokeBonk.xcodeproj/project.pbxproj ios/apps.json 2>/dev/null || true
 
             if ! git diff --cached --quiet; then
               COMMIT_TEXT="chore(release): auto-bump version ($TARGET $BUMP_TYPE) [skip ci]"
               git commit -m "$COMMIT_TEXT"
               echo "Pushing version bump commit to ${{ github.ref_name }}..."
-              if ! git push origin HEAD:${{ github.ref_name }}; then
+              PUSH_SUCCESS=false
+              if git push origin HEAD:${{ github.ref_name }}; then
+                PUSH_SUCCESS=true
+              else
                 echo "Non-fast-forward push detected. Pulling with rebase..."
-                git pull --rebase origin ${{ github.ref_name }} || true
-                git push origin HEAD:${{ github.ref_name }} || git push --force-with-lease origin HEAD:${{ github.ref_name }} || echo "Warning: Could not push version bump commit. Proceeding with build."
+                if git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }}; then
+                  PUSH_SUCCESS=true
+                elif git push --force-with-lease origin HEAD:${{ github.ref_name }}; then
+                  PUSH_SUCCESS=true
+                else
+                  echo "::warning::Could not push version bump commit. Reverting to avoid broken ref."
+                  git reset --hard ${{ github.sha }}
+                fi
               fi
-              NEW_SHA=$(git rev-parse HEAD)
+              if [ "$PUSH_SUCCESS" = "true" ]; then
+                NEW_SHA=$(git rev-parse HEAD)
+              else
+                NEW_SHA=${{ github.sha }}
+              fi
               echo "Final build commit: $NEW_SHA"
             else
               echo "No version files changed."
@@ -200,7 +213,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -228,13 +242,21 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName =' android/app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           VERSION_CODE=$(grep 'versionCode =' android/app/build.gradle.kts | head -1 | sed -E 's/.*= *([0-9]+).*/\1/')
+          WIN_VERSION=$(grep '"version"' windows/package.json | head -1 | sed -E 's/.*"version": *"([^"]+)".*/\1/')
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
           cat << EOF > version.json
           {
             "versionName": "$VERSION_NAME",
             "versionCode": $VERSION_CODE,
-            "commit": "${{ needs.prepare-and-bump.outputs.new_sha }}",
+            "android": {
+              "versionName": "$VERSION_NAME",
+              "versionCode": $VERSION_CODE
+            },
+            "windows": {
+              "version": "$WIN_VERSION"
+            },
+            "commit": "${{ github.sha }}",
             "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           }
           EOF
@@ -264,7 +286,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
@@ -306,6 +329,21 @@ jobs:
             )
             $lines -join "`n" | Set-Content "dist/latest.yml" -Encoding UTF8
             Write-Host "Successfully generated dist/latest.yml for v$ver"
+            $androidVer = "1.0"
+            $androidCode = 1
+            if (Test-Path "../android/app/build.gradle.kts") {
+              $gradle = Get-Content "../android/app/build.gradle.kts" -Raw
+              if ($gradle -match 'versionName\s*=\s*"([^"]+)"') { $androidVer = $matches[1] }
+              if ($gradle -match 'versionCode\s*=\s*(\d+)') { $androidCode = [int]$matches[1] }
+            }
+            $winVerObj = @{
+              version = $ver
+              versionName = $ver
+              windows = @{ version = $ver }
+              android = @{ versionName = $androidVer; versionCode = $androidCode }
+              timestamp = $date
+            }
+            $winVerObj | ConvertTo-Json | Set-Content "dist/version.json" -Encoding UTF8
           } else {
             Write-Error "dist/PokeBonk.exe not found!"
           }
@@ -326,6 +364,7 @@ jobs:
           files: |
             windows/dist/PokeBonk.exe
             windows/dist/latest.yml
+            windows/dist/version.json
           prerelease: false
           make_latest: true
 
@@ -337,7 +376,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Display Xcode Version
         run: xcodebuild -version

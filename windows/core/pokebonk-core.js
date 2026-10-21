@@ -1,6 +1,6 @@
 /**
- * PokéBonk Unified Client Core Engine
- * Shared runtime for Android, Windows, and iOS native wrappers.
+ * PokéBonk Unified Client Core Engine (v2.5)
+ * Shared runtime for Android, Windows, iOS native wrappers and Web.
  */
 (function () {
   'use strict';
@@ -11,6 +11,8 @@
   // --- Constants & Storage Keys ---
   const STORAGE_LAYOUT_KEY = 'pb_swap_abxy';
   const STORAGE_SENSITIVITY_KEY = 'pb_stick_sensitivity';
+  const STORAGE_POS_X = 'pb_hud_pos_x';
+  const STORAGE_POS_Y = 'pb_hud_pos_y';
   let lastTogNavTime = 0;
 
   // --- Native Bridge Wrapper ---
@@ -34,6 +36,14 @@
       }
     },
 
+    openReleasePage: function () {
+      if (window.AndroidApp && window.AndroidApp.openReleasePage) {
+        window.AndroidApp.openReleasePage();
+      } else {
+        window.open('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest', '_blank');
+      }
+    },
+
     reloadGame: function () {
       if (window.AndroidApp && window.AndroidApp.reloadGame) {
         window.AndroidApp.reloadGame();
@@ -42,6 +52,33 @@
       } else {
         location.reload();
       }
+    },
+
+    toggleFullscreen: function () {
+      if (window.electronAPI && window.electronAPI.toggleFullscreen) {
+        window.electronAPI.toggleFullscreen();
+      } else if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    },
+
+    getAppVersion: function (cb) {
+      if (window.AndroidApp && window.AndroidApp.getAppVersion) {
+        try {
+          const v = window.AndroidApp.getAppVersion();
+          if (v) return cb(v);
+        } catch (_) {}
+      } else if (window.electronAPI && window.electronAPI.getAppVersion) {
+        window.electronAPI.getAppVersion().then(v => cb(v)).catch(() => cb(null));
+        return;
+      }
+      cb(null);
+    },
+
+    showToast: function (msg) {
+      showToast(msg);
     }
   };
 
@@ -63,6 +100,7 @@
 
   window.addEventListener('touchstart', unlockAudioContext, { passive: true, once: true });
   window.addEventListener('pointerdown', unlockAudioContext, { passive: true, once: true });
+  window.addEventListener('keydown', unlockAudioContext, { passive: true, once: true });
   window.addEventListener('gamepadconnected', unlockAudioContext, { passive: true, once: true });
 
   // --- Viewport & Touch Setup ---
@@ -95,11 +133,11 @@
 
   function getStickSensitivity() {
     const raw = parseFloat(localStorage.getItem(STORAGE_SENSITIVITY_KEY) || '1.0');
-    return isNaN(raw) ? 1.0 : Math.max(0.2, Math.min(3.0, Math.round(raw * 20) / 20));
+    return isNaN(raw) ? 1.0 : Math.max(0.3, Math.min(2.5, Math.round(raw * 20) / 20));
   }
 
   function setStickSensitivity(val) {
-    const clamped = Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
+    const clamped = Math.max(0.3, Math.min(2.5, Math.round(val * 20) / 20));
     localStorage.setItem(STORAGE_SENSITIVITY_KEY, String(clamped));
     syncNativeSensitivityInputs(clamped);
     updateMenuVisuals();
@@ -112,7 +150,7 @@
     if (Math.abs(val) < deadzone) return 0;
     const sign = Math.sign(val);
     const normalized = (Math.abs(val) - deadzone) / (1 - deadzone);
-    const curved = Math.pow(normalized, 1.0 / Math.max(0.3, sensitivity));
+    const curved = Math.pow(normalized, 1.1) * sensitivity;
     return sign * Math.min(1.0, Math.max(0.0, curved));
   }
 
@@ -165,19 +203,6 @@
         // Axes Sensitivity Curve
         const axes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
 
-        // Smooth camera tilt amplifier for right stick
-        if (i === 0 && axes.length >= 4 && (Math.abs(pad.axes[2] || 0) > 0.09 || Math.abs(pad.axes[3] || 0) > 0.09)) {
-          const canvas = document.getElementById('game');
-          if (canvas && Math.abs(sensitivity - 1.0) > 0.05) {
-            const factor = (sensitivity - 1.0) * 14;
-            canvas.dispatchEvent(new MouseEvent('mousemove', {
-              movementX: (pad.axes[2] || 0) * factor,
-              movementY: (pad.axes[3] || 0) * factor,
-              bubbles: true
-            }));
-          }
-        }
-
         result.push({
           id: pad.id,
           index: pad.index,
@@ -207,8 +232,8 @@
 
   function syncNativeSensitivityInputs(sens) {
     const val = typeof sens === 'number' ? sens : getStickSensitivity();
-    const min = 0.2;
-    const max = 3.0;
+    const min = 0.3;
+    const max = 2.5;
     const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
 
     findNativeSensitivityInputs().forEach(inp => {
@@ -257,17 +282,17 @@
           let cur = parseFloat(inp.value) || 1.0;
           if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
             e.preventDefault();
-            const next = Math.max(0.2, Math.round((cur - 0.1) * 20) / 20);
+            const next = Math.max(0.3, Math.round((cur - 0.1) * 20) / 20);
             setStickSensitivity(next);
           } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
             e.preventDefault();
-            const next = Math.min(3.0, Math.round((cur + 0.1) * 20) / 20);
+            const next = Math.min(2.5, Math.round((cur + 0.1) * 20) / 20);
             setStickSensitivity(next);
           }
         });
 
         inp.addEventListener('input', () => {
-          const v = Math.max(0.2, Math.min(3.0, parseFloat(inp.value) || 1.0));
+          const v = Math.max(0.3, Math.min(2.5, parseFloat(inp.value) || 1.0));
           setStickSensitivity(v);
         });
       }
@@ -316,24 +341,66 @@
       toast.id = 'pb-core-toast';
       document.body.appendChild(toast);
     }
-    toast.textContent = message;
+    toast.innerHTML = `<span style="font-size:14px;">⚡</span><span>${message}</span>`;
     toast.classList.add('visible');
     clearTimeout(toast.__timer);
     toast.__timer = setTimeout(() => {
       toast.classList.remove('visible');
-    }, 2200);
+    }, 2400);
   }
 
-  // --- Floating HUD Menu ---
+  // --- Gamepad Detection Helper ---
+  function getConnectedGamepad() {
+    if (!navigator.getGamepads) return null;
+    const pads = navigator.getGamepads();
+    if (!pads) return null;
+    for (let i = 0; i < pads.length; i++) {
+      if (pads[i] && pads[i].connected) return pads[i];
+    }
+    return null;
+  }
+
+  // --- Floating HUD Menu Visuals ---
   function updateMenuVisuals() {
-    const layoutBtn = document.getElementById('pb-menu-item-layout');
-    if (layoutBtn) {
-      layoutBtn.textContent = isLayoutSwapped() ? '🎮 Layout: Switch (East = A)' : '🎮 Layout: Xbox (South = A)';
+    const layoutPill = document.getElementById('pb-menu-pill-layout');
+    if (layoutPill) {
+      layoutPill.textContent = isLayoutSwapped() ? 'Switch (East = A)' : 'Xbox (South = A)';
     }
 
-    const sensBtn = document.getElementById('pb-menu-item-sens');
-    if (sensBtn) {
-      sensBtn.textContent = '🎯 Stick Sensitivity: ' + Math.round(getStickSensitivity() * 100) + '%';
+    const sensVal = document.getElementById('pb-sens-value');
+    const sensSlider = document.getElementById('pb-sens-slider');
+    const curSens = getStickSensitivity();
+    if (sensVal) {
+      sensVal.textContent = Math.round(curSens * 100) + '%';
+    }
+    if (sensSlider && Math.abs(parseFloat(sensSlider.value) - curSens) > 0.02) {
+      sensSlider.value = curSens;
+    }
+
+    // Update preset chips active state
+    document.querySelectorAll('.pb-preset-btn').forEach(btn => {
+      const v = parseFloat(btn.dataset.val);
+      if (Math.abs(v - curSens) < 0.04) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Update Gamepad Status Bar
+    const padBarText = document.getElementById('pb-pad-text');
+    const padDot = document.getElementById('pb-pad-dot');
+    const activePad = getConnectedGamepad();
+    if (padBarText && padDot) {
+      if (activePad) {
+        padDot.classList.add('active');
+        let name = activePad.id || 'Controller';
+        if (name.length > 22) name = name.substring(0, 20) + '…';
+        padBarText.textContent = 'Connected: ' + name;
+      } else {
+        padDot.classList.remove('active');
+        padBarText.textContent = 'No Gamepad Detected';
+      }
     }
 
     syncNativeSensitivityInputs();
@@ -345,37 +412,239 @@
     const hudContainer = document.createElement('div');
     hudContainer.id = 'pb-core-hud';
 
+    // Restore saved position if available
+    const savedX = localStorage.getItem(STORAGE_POS_X);
+    const savedY = localStorage.getItem(STORAGE_POS_Y);
+    if (savedX !== null && savedY !== null) {
+      hudContainer.style.left = savedX + 'px';
+      hudContainer.style.top = savedY + 'px';
+    }
+
+    // Toggle Button
     const toggleBtn = document.createElement('button');
     toggleBtn.id = 'pb-hud-toggle';
-    toggleBtn.title = 'PokéBonk Menu';
-    toggleBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+    toggleBtn.title = 'PokéBonk Settings & Menu';
+    toggleBtn.innerHTML = `
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    `;
 
+    // Draggable behavior
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let elemStartX = 0;
+    let elemStartY = 0;
+    let hasMoved = false;
+
+    function onPointerDown(e) {
+      if (menu.classList.contains('open')) return;
+      isDragging = true;
+      hasMoved = false;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+      dragStartX = clientX;
+      dragStartY = clientY;
+      const rect = hudContainer.getBoundingClientRect();
+      elemStartX = rect.left;
+      elemStartY = rect.top;
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+      const dx = clientX - dragStartX;
+      const dy = clientY - dragStartY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        hasMoved = true;
+      }
+      if (hasMoved) {
+        e.preventDefault();
+        const nextX = Math.max(8, Math.min(window.innerWidth - 50, elemStartX + dx));
+        const nextY = Math.max(8, Math.min(window.innerHeight - 50, elemStartY + dy));
+        hudContainer.style.left = nextX + 'px';
+        hudContainer.style.top = nextY + 'px';
+      }
+    }
+
+    function onPointerUp() {
+      if (isDragging && hasMoved) {
+        const rect = hudContainer.getBoundingClientRect();
+        localStorage.setItem(STORAGE_POS_X, String(Math.round(rect.left)));
+        localStorage.setItem(STORAGE_POS_Y, String(Math.round(rect.top)));
+      }
+      isDragging = false;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    }
+
+    toggleBtn.addEventListener('pointerdown', onPointerDown);
+
+    // Dropdown Menu Container
     const menu = document.createElement('div');
     menu.id = 'pb-hud-menu';
 
+    // 1. Header with brand and badges
     const header = document.createElement('div');
     header.className = 'pb-menu-header';
-    header.innerHTML = '<span class="pb-title">PokéBonk</span><span class="pb-badge">NATIVE</span>';
+    header.innerHTML = `
+      <div class="pb-header-left">
+        <span class="pb-pokeball-icon"></span>
+        <span class="pb-title">POKÉBONK</span>
+      </div>
+      <div class="pb-header-badges">
+        <span class="pb-platform-badge ${NativeBridge.platform}">${NativeBridge.platform}</span>
+        <span id="pb-version-display" class="pb-version-tag"></span>
+      </div>
+    `;
     menu.appendChild(header);
 
-    function createMenuItem(id, label, action) {
-      const btn = document.createElement('button');
-      btn.id = id;
-      btn.className = 'pb-menu-btn';
-      btn.textContent = label;
+    // Dynamic Version Display
+    NativeBridge.getAppVersion((ver) => {
+      const vDisp = document.getElementById('pb-version-display');
+      if (vDisp && ver) {
+        vDisp.textContent = 'v' + ver;
+      }
+    });
+
+    // 2. Gamepad Live Status Bar
+    const padBar = document.createElement('div');
+    padBar.className = 'pb-gamepad-bar';
+    padBar.innerHTML = `
+      <span id="pb-pad-dot" class="pb-status-dot"></span>
+      <span id="pb-pad-text">No Gamepad Detected</span>
+    `;
+    menu.appendChild(padBar);
+
+    // 3. Controller Layout Toggle
+    const layoutBtn = document.createElement('button');
+    layoutBtn.className = 'pb-menu-btn';
+    layoutBtn.innerHTML = `
+      <div class="pb-btn-content">
+        <span>🎮</span>
+        <span>Controller Layout</span>
+      </div>
+      <span id="pb-menu-pill-layout" class="pb-btn-pill">Xbox</span>
+    `;
+    layoutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setLayoutSwapped(!isLayoutSwapped());
+    });
+    menu.appendChild(layoutBtn);
+
+    // 4. Stick Sensitivity Slider Box
+    const sensBox = document.createElement('div');
+    sensBox.className = 'pb-section-box';
+    sensBox.innerHTML = `
+      <div class="pb-row-label">
+        <span>🎯 Stick Sensitivity</span>
+        <span id="pb-sens-value" class="pb-row-value">100%</span>
+      </div>
+      <input type="range" id="pb-sens-slider" class="pb-range-slider" min="0.5" max="2.0" step="0.05" value="1.0">
+      <div class="pb-presets-row">
+        <button class="pb-preset-btn" data-val="0.5">50%</button>
+        <button class="pb-preset-btn" data-val="0.75">75%</button>
+        <button class="pb-preset-btn active" data-val="1.0">100%</button>
+        <button class="pb-preset-btn" data-val="1.5">150%</button>
+        <button class="pb-preset-btn" data-val="2.0">200%</button>
+      </div>
+    `;
+
+    const slider = sensBox.querySelector('#pb-sens-slider');
+    slider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      setStickSensitivity(parseFloat(slider.value));
+    });
+
+    sensBox.querySelectorAll('.pb-preset-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        action();
+        setStickSensitivity(parseFloat(btn.dataset.val));
       });
-      return btn;
+    });
+
+    menu.appendChild(sensBox);
+
+    // 5. Fullscreen Toggle (Windows / Web)
+    if (NativeBridge.platform === 'windows' || NativeBridge.platform === 'web') {
+      const fsBtn = document.createElement('button');
+      fsBtn.className = 'pb-menu-btn';
+      fsBtn.innerHTML = `
+        <div class="pb-btn-content">
+          <span>⛶</span>
+          <span>Toggle Fullscreen</span>
+        </div>
+        <span style="font-size:10px;color:#94a3b8;">F11</span>
+      `;
+      fsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        NativeBridge.toggleFullscreen();
+      });
+      menu.appendChild(fsBtn);
     }
 
+    // 6. Reload Game Button
+    const reloadBtn = document.createElement('button');
+    reloadBtn.className = 'pb-menu-btn';
+    reloadBtn.innerHTML = `
+      <div class="pb-btn-content">
+        <span>🔄</span>
+        <span>Reload Game</span>
+      </div>
+    `;
+    reloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(false);
+      NativeBridge.reloadGame();
+    });
+    menu.appendChild(reloadBtn);
+
+    // 7. Check for Updates Button
+    const updateBtn = document.createElement('button');
+    updateBtn.className = 'pb-menu-btn';
+    updateBtn.innerHTML = `
+      <div class="pb-btn-content">
+        <span>⬆</span>
+        <span>Check for Updates</span>
+      </div>
+    `;
+    updateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(false);
+      NativeBridge.checkForUpdates();
+    });
+    menu.appendChild(updateBtn);
+
+    // 8. Close Button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'pb-menu-btn pb-menu-btn-close';
+    closeBtn.textContent = '✕ Close Menu';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(false);
+    });
+    menu.appendChild(closeBtn);
+
+    // Menu toggle logic
     function toggleMenu(show) {
       const isVisible = menu.classList.contains('open');
       const next = typeof show === 'boolean' ? show : !isVisible;
       if (next) {
         menu.classList.add('open');
         toggleBtn.classList.add('active');
+        const hudRect = hudContainer.getBoundingClientRect();
+        if (hudRect.left + 310 > window.innerWidth) {
+          hudContainer.style.alignItems = 'flex-end';
+        } else {
+          hudContainer.style.alignItems = 'flex-start';
+        }
         updateMenuVisuals();
         setTimeout(() => document.addEventListener('click', onOutsideClick), 10);
       } else {
@@ -392,46 +661,24 @@
     }
 
     toggleBtn.addEventListener('click', (e) => {
+      if (hasMoved) return;
       e.stopPropagation();
       toggleMenu();
     });
 
-    const layoutBtn = createMenuItem('pb-menu-item-layout', '🎮 Layout: Xbox', () => {
-      setLayoutSwapped(!isLayoutSwapped());
-      toggleMenu(false);
-    });
-
-    const sensBtn = createMenuItem('pb-menu-item-sens', '🎯 Stick Sensitivity: 100%', () => {
-      const cur = getStickSensitivity();
-      const next = cur >= 2.9 ? 0.5 : Math.round((cur + 0.25) * 100) / 100;
-      const updated = setStickSensitivity(next);
-      showToast('Stick Sensitivity: ' + Math.round(updated * 100) + '%');
-    });
-
-    const reloadBtn = createMenuItem('pb-menu-item-reload', '🔄 Reload Game', () => {
-      toggleMenu(false);
-      NativeBridge.reloadGame();
-    });
-
-    const updateBtn = createMenuItem('pb-menu-item-update', '⬆ Check for Updates', () => {
-      toggleMenu(false);
-      NativeBridge.checkForUpdates();
-    });
-
-    const closeBtn = createMenuItem('pb-menu-item-close', '✕ Close Menu', () => {
-      toggleMenu(false);
-    });
-    closeBtn.classList.add('pb-menu-btn-close');
-
-    menu.appendChild(layoutBtn);
-    menu.appendChild(sensBtn);
-    menu.appendChild(reloadBtn);
-    menu.appendChild(updateBtn);
-    menu.appendChild(closeBtn);
-
     hudContainer.appendChild(toggleBtn);
     hudContainer.appendChild(menu);
     document.body.appendChild(hudContainer);
+
+    // Gamepad connection events for live status update
+    window.addEventListener('gamepadconnected', () => {
+      updateMenuVisuals();
+      showToast('Gamepad Connected');
+    });
+    window.addEventListener('gamepaddisconnected', () => {
+      updateMenuVisuals();
+      showToast('Gamepad Disconnected');
+    });
 
     updateMenuVisuals();
   }

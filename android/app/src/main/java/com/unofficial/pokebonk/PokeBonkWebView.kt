@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
-import android.util.Base64
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -110,6 +109,23 @@ class PokeBonkWebView(context: Context, private val updateManager: UpdateManager
         fun checkForUpdatesManual() {
             post {
                 updateManager.checkForUpdates(isUserInitiated = true)
+            }
+        }
+
+        @JavascriptInterface
+        fun openReleasePage() {
+            post {
+                updateManager.openReleasePage()
+            }
+        }
+
+        @JavascriptInterface
+        fun getAppVersion(): String {
+            return try {
+                val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                pInfo.versionName ?: "1.0"
+            } catch (_: Exception) {
+                "1.0"
             }
         }
     }

@@ -7,7 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleFullscreen: () => ipcRenderer.send('toggle-fullscreen'),
   reloadGame: () => ipcRenderer.send('reload-game'),
   checkForUpdates: () => ipcRenderer.send('check-for-updates-manual'),
-  exitApp: () => ipcRenderer.send('exit-app')
+  exitApp: () => ipcRenderer.send('exit-app'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  isDesktop: true
 });
 
 window.addEventListener('DOMContentLoaded', () => {
