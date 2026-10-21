@@ -1,4 +1,12 @@
 {
+  "name": "pokebonk-windows",
+  "version": "2.3.0",
+  "description": "PokéBonk Production Desktop Client",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "npx electron-builder --win portable"
+  },
   "build": {
     "appId": "com.unofficial.pokebonk",
     "productName": "PokeBonk",
@@ -17,5 +25,13 @@
       "repo": "unofficial_pokebonk",
       "releaseType": "release"
     }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "electron-updater": "^6.3.9"
   }
 }
