@@ -123,7 +123,7 @@ function launchGameWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.hide();
+      launcherWindow.close();
     }
     return;
   }
@@ -154,8 +154,13 @@ function launchGameWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    if (launcherWindow && !launcherWindow.isDestroyed()) {
+      launcherWindow.close();
+    }
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+      if (app.isPackaged) {
+        autoUpdater.checkForUpdates().catch(() => {});
+      }
     }, 5000);
   });
 
@@ -194,6 +199,7 @@ function createLauncherWindow() {
   launcherWindow = new BrowserWindow({
     width: 520,
     height: 360,
+    frame: false,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -208,10 +214,16 @@ function createLauncherWindow() {
   });
 
   launcherWindow.setMenuBarVisibility(false);
+
   launcherWindow.once('ready-to-show', () => {
     launcherWindow.show();
-    sendLauncherStatus('checking', { message: 'Checking for updates…' });
-    autoUpdater.checkForUpdates().catch(() => {});
+
+    if (app.isPackaged) {
+      sendLauncherStatus('checking', { message: 'Checking for updates…' });
+      autoUpdater.checkForUpdates().catch(() => {});
+    } else {
+      sendLauncherStatus('up-to-date', { message: 'Development build — updater disabled.' });
+    }
   });
 
   launcherWindow.on('closed', () => {
@@ -229,7 +241,13 @@ ipcMain.on('launch-game', () => {
 });
 
 ipcMain.on('update-game', async () => {
+  if (!app.isPackaged) {
+    sendLauncherStatus('error', { message: 'Updater is disabled in development mode.' });
+    return;
+  }
+
   updateQueued = true;
+
   try {
     const result = await autoUpdater.checkForUpdates();
     if (result && result.updateInfo && result.updateInfo.version) {
