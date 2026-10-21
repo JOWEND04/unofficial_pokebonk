@@ -433,9 +433,9 @@ class MainActivity : ComponentActivity() {
             .setTitle("PokéBonk update")
             .setDescription("Downloading latest PokeBonk APK")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(Environment.DIRECTORY_DOWNLOADS, apkFileName)
+            .setDestinationInExternalFilesDir(this@MainActivity, Environment.DIRECTORY_DOWNLOADS, "pokebonk-update.apk")
             .setAllowedOverMetered(true)
-            .setAllowedUnderRoaming(true)
+            .setAllowedOverRoaming(true)
 
         val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadId = dm.enqueue(request)
