@@ -170,11 +170,16 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch (_) {}
     }, 4000);
 
-    // Controller input mapping & Stick Sensitivity
+    // Controller input mapping & Stick Sensitivity (cached in-memory for 0ms frame lookups)
     const SENSITIVITY_KEY = 'pb_stick_sensitivity';
+    let cachedSensitivity = 1.0;
+    try {
+        const parsed = parseFloat(localStorage.getItem(SENSITIVITY_KEY) || '1.0');
+        if (!isNaN(parsed)) cachedSensitivity = Math.max(0.2, Math.min(3.0, Math.round(parsed * 20) / 20));
+    } catch (_) {}
+
     function getStickSensitivity() {
-        const val = parseFloat(localStorage.getItem(SENSITIVITY_KEY) || '1.0');
-        return isNaN(val) ? 1.0 : Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
+        return cachedSensitivity;
     }
 
     function findNativeSensitivityInput() {
@@ -188,7 +193,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function setStickSensitivity(val) {
         const clamped = Math.max(0.2, Math.min(3.0, Math.round(val * 20) / 20));
-        localStorage.setItem(SENSITIVITY_KEY, String(clamped));
+        cachedSensitivity = clamped;
+        try { localStorage.setItem(SENSITIVITY_KEY, String(clamped)); } catch (_) {}
 
         const nativeInput = findNativeSensitivityInput();
         if (nativeInput) {
@@ -212,7 +218,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('keydown', (e) => {
         if (e.key === 'F9') {
             swapABXY = !swapABXY;
-            localStorage.setItem('pb_swap_abxy', swapABXY);
+            try { localStorage.setItem('pb_swap_abxy', swapABXY); } catch (_) {}
             showToast(
                 swapABXY
                     ? 'Layout: Switch Mode (East = A, South = B)'
@@ -236,10 +242,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function processAxis(val, sensitivity) {
         if (Math.abs(val) < 0.06) return 0;
-        const sign = Math.sign(val);
         const abs = Math.abs(val);
-        const curved = Math.pow((abs - 0.06) / (1 - 0.06), 1.0 / Math.max(0.3, sensitivity));
-        return sign * Math.min(1.0, Math.max(0.0, curved));
+        const norm = (abs - 0.06) * 1.063829787; // Optimized multiplication vs division (1.0 / 0.94)
+        const sign = val < 0 ? -1 : 1;
+        if (Math.abs(sensitivity - 1.0) < 0.02) {
+            return sign * (norm > 1.0 ? 1.0 : norm);
+        }
+        const curved = Math.pow(norm, 1.0 / Math.max(0.3, sensitivity));
+        return sign * (curved > 1.0 ? 1.0 : curved);
     }
 
     // Settings Gamepad Navigation & Native Sensitivity Sync
@@ -330,17 +340,47 @@ window.addEventListener('DOMContentLoaded', () => {
     let lastTogNavTime = 0;
     const nativeGetGamepads = navigator.getGamepads.bind(navigator);
 
+    // Pre-allocated reusable structures to eliminate garbage collection pauses during 60+ FPS gameplay
+    const gamepadResult = [null, null, null, null];
+    const cachedPadObjects = [{}, {}, {}, {}];
+    const cachedButtons = [[], [], [], []];
+    const cachedAxes = [[], [], [], []];
+
     navigator.getGamepads = function () {
         const rawPads = nativeGetGamepads();
-        const result = [null, null, null, null];
-        const sensitivity = getStickSensitivity();
+        gamepadResult[0] = null;
+        gamepadResult[1] = null;
+        gamepadResult[2] = null;
+        gamepadResult[3] = null;
 
-        for (let i = 0; i < rawPads.length; i++) {
+        const sensitivity = cachedSensitivity;
+        const rawLen = rawPads ? rawPads.length : 0;
+
+        for (let i = 0; i < rawLen && i < 4; i++) {
             const pad = rawPads[i];
             if (!pad) continue;
 
-            const hasStickInput = pad.axes && pad.axes.some(a => Math.abs(a) > 0.22);
-            const hasButtonInput = pad.buttons && pad.buttons.some(b => b && b.pressed);
+            let hasStickInput = false;
+            if (pad.axes) {
+                for (let a = 0; a < pad.axes.length; a++) {
+                    if (Math.abs(pad.axes[a]) > 0.22) {
+                        hasStickInput = true;
+                        break;
+                    }
+                }
+            }
+
+            let hasButtonInput = false;
+            if (pad.buttons) {
+                for (let b = 0; b < pad.buttons.length; b++) {
+                    const btn = pad.buttons[b];
+                    if (btn && btn.pressed) {
+                        hasButtonInput = true;
+                        break;
+                    }
+                }
+            }
+
             if (hasStickInput || hasButtonInput) {
                 document.body.classList.add('controller-active');
             }
@@ -367,23 +407,54 @@ window.addEventListener('DOMContentLoaded', () => {
                 quitHoldStart = 0;
             }
 
-            const mappedButtons = pad.buttons.map(b => ({
-                pressed: Boolean(b?.pressed),
-                touched: Boolean(b?.touched),
-                value: Number(b?.value || 0)
-            }));
-
-            if (swapABXY && mappedButtons.length >= 4) {
-                const b0 = mappedButtons[0];
-                mappedButtons[0] = mappedButtons[1];
-                mappedButtons[1] = b0;
-
-                const b2 = mappedButtons[2];
-                mappedButtons[2] = mappedButtons[3];
-                mappedButtons[3] = b2;
+            // Map and recycle button structures without array or closure allocations
+            const btnLen = pad.buttons ? pad.buttons.length : 0;
+            let padMappedButtons = cachedButtons[i];
+            if (padMappedButtons.length !== btnLen) {
+                padMappedButtons = cachedButtons[i] = new Array(btnLen);
+                for (let b = 0; b < btnLen; b++) {
+                    padMappedButtons[b] = { pressed: false, touched: false, value: 0 };
+                }
+            }
+            for (let b = 0; b < btnLen; b++) {
+                const btn = pad.buttons[b];
+                const targetBtn = padMappedButtons[b];
+                targetBtn.pressed = Boolean(btn && btn.pressed);
+                targetBtn.touched = Boolean(btn && btn.touched);
+                targetBtn.value = Number(btn ? btn.value : 0);
             }
 
-            const mappedAxes = pad.axes ? pad.axes.map(v => processAxis(v, sensitivity)) : [];
+            if (swapABXY && btnLen >= 4) {
+                const p0 = padMappedButtons[0].pressed;
+                const t0 = padMappedButtons[0].touched;
+                const v0 = padMappedButtons[0].value;
+                padMappedButtons[0].pressed = padMappedButtons[1].pressed;
+                padMappedButtons[0].touched = padMappedButtons[1].touched;
+                padMappedButtons[0].value = padMappedButtons[1].value;
+                padMappedButtons[1].pressed = p0;
+                padMappedButtons[1].touched = t0;
+                padMappedButtons[1].value = v0;
+
+                const p2 = padMappedButtons[2].pressed;
+                const t2 = padMappedButtons[2].touched;
+                const v2 = padMappedButtons[2].value;
+                padMappedButtons[2].pressed = padMappedButtons[3].pressed;
+                padMappedButtons[2].touched = padMappedButtons[3].touched;
+                padMappedButtons[2].value = padMappedButtons[3].value;
+                padMappedButtons[3].pressed = p2;
+                padMappedButtons[3].touched = t2;
+                padMappedButtons[3].value = v2;
+            }
+
+            // Map and recycle axes array
+            const axesLen = pad.axes ? pad.axes.length : 0;
+            let padMappedAxes = cachedAxes[i];
+            if (padMappedAxes.length !== axesLen) {
+                padMappedAxes = cachedAxes[i] = new Array(axesLen);
+            }
+            for (let a = 0; a < axesLen; a++) {
+                padMappedAxes[a] = processAxis(pad.axes[a], sensitivity);
+            }
 
             // Dynamically amplify camera rotation when right stick is tilted during gameplay
             if (i === 0 && (Math.abs(pad.axes[2] || 0) > 0.08 || Math.abs(pad.axes[3] || 0) > 0.08)) {
@@ -400,19 +471,19 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            result[i] = {
-                id: pad.id,
-                index: pad.index,
-                connected: pad.connected,
-                timestamp: pad.timestamp,
-                mapping: 'standard',
-                axes: mappedAxes,
-                buttons: mappedButtons,
-                vibrationActuator: pad.vibrationActuator || null,
-                hapticActuators: pad.hapticActuators || []
-            };
+            const padObj = cachedPadObjects[i];
+            padObj.id = pad.id;
+            padObj.index = pad.index;
+            padObj.connected = pad.connected;
+            padObj.timestamp = pad.timestamp;
+            padObj.mapping = 'standard';
+            padObj.axes = padMappedAxes;
+            padObj.buttons = padMappedButtons;
+            padObj.vibrationActuator = pad.vibrationActuator || null;
+            padObj.hapticActuators = pad.hapticActuators || [];
+            gamepadResult[i] = padObj;
         }
 
-        return result;
+        return gamepadResult;
     };
 });

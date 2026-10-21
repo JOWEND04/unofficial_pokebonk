@@ -40,7 +40,8 @@ if (!gotTheLock) {
   app.quit();
 }
 
-app.commandLine.appendSwitch('enable-features', 'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController');
+app.commandLine.appendSwitch('enable-features', 'WindowsGamingInput,GamepadButtonAxisEvents,EnableNintendoSwitchProController,CanvasOopRasterization');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -48,7 +49,13 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+app.commandLine.appendSwitch('use-angle', 'd3d11');
+app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('enable-highres-timer');
+app.commandLine.appendSwitch('enable-quic');
+app.commandLine.appendSwitch('enable-tcp-fast-open');
 
 let launcherWindow = null;
 let mainWindow = null;
@@ -304,7 +311,10 @@ function launchGameWindow() {
       nodeIntegration: false,
       zoomFactor: 1.0,
       backgroundThrottling: false,
-      spellcheck: false
+      spellcheck: false,
+      devTools: false,
+      enableWebSQL: false,
+      v8CacheOptions: 'bypassHeatCheckAndEagerCompile'
     }
   });
 
@@ -461,7 +471,12 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(createLauncherWindow);
+app.whenReady().then(() => {
+  try {
+    session.defaultSession.setSpellCheckerEnabled(false);
+  } catch (_) {}
+  createLauncherWindow();
+});
 
 app.on('window-all-closed', () => {
   if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
