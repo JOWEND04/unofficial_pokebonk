@@ -11,6 +11,7 @@
   // --- Constants & Storage Keys ---
   const STORAGE_LAYOUT_KEY = 'pb_swap_abxy';
   const STORAGE_SENSITIVITY_KEY = 'pb_stick_sensitivity';
+  let lastTogNavTime = 0;
 
   // --- Native Bridge Wrapper ---
   const NativeBridge = {
@@ -133,6 +134,17 @@
           continue;
         }
 
+        // D-Pad Left / Right toggle support for active toggle switch row
+        const isLeft = (pad.buttons && pad.buttons[14]?.pressed) || (pad.axes && pad.axes[0] < -0.65);
+        const isRight = (pad.buttons && pad.buttons[15]?.pressed) || (pad.axes && pad.axes[0] > 0.65);
+        if ((isLeft || isRight) && performance.now() - lastTogNavTime > 320) {
+          const activeTog = document.querySelector('.st-row.pad-focus, .st-row.tog:focus');
+          if (activeTog) {
+            lastTogNavTime = performance.now();
+            activeTog.click();
+          }
+        }
+
         const buttons = pad.buttons.map(b => ({
           pressed: !!(b && b.pressed),
           touched: !!(b && b.touched),
@@ -216,11 +228,44 @@
     const stPanel = document.querySelector('.panel.pz-st') || (document.querySelector('.st-row') && document.querySelector('.st-row').parentElement);
     if (!stPanel) return;
 
-    // Enhance native sensitivity slider
+    // 1. Enable controller focus and keyboard toggle on all toggle switch rows
+    const allRows = document.querySelectorAll('.st-row');
+    for (const r of allRows) {
+      const isToggle = r.classList.contains('tog') || r.querySelector('.switch') || r.querySelector('button.switch');
+      if (isToggle && !r.dataset.pbPatched) {
+        r.dataset.pbPatched = 'true';
+        r.setAttribute('tabindex', '0');
+        r.style.cursor = 'pointer';
+        r.addEventListener('keydown', (e) => {
+          if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            r.click();
+          }
+        });
+      }
+    }
+
+    // 2. Enhance native sensitivity slider
     findNativeSensitivityInputs().forEach(inp => {
       const row = inp.closest('.st-row');
-      if (row && !row.dataset.pbPatched) {
-        row.dataset.pbPatched = 'true';
+      if (row && !row.dataset.pbSliderPatched) {
+        row.dataset.pbSliderPatched = 'true';
+        row.setAttribute('tabindex', '0');
+        row.style.cursor = 'pointer';
+
+        row.addEventListener('keydown', (e) => {
+          let cur = parseFloat(inp.value) || 1.0;
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = Math.max(0.2, Math.round((cur - 0.1) * 20) / 20);
+            setStickSensitivity(next);
+          } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const next = Math.min(3.0, Math.round((cur + 0.1) * 20) / 20);
+            setStickSensitivity(next);
+          }
+        });
+
         inp.addEventListener('input', () => {
           const v = Math.max(0.2, Math.min(3.0, parseFloat(inp.value) || 1.0));
           setStickSensitivity(v);
@@ -228,7 +273,7 @@
       }
     });
 
-    // Inject Controller Button Layout Toggle Row
+    // 3. Inject Controller Button Layout Toggle Row
     if (!document.getElementById('pb-native-layout-row')) {
       const row = document.createElement('div');
       row.id = 'pb-native-layout-row';
@@ -250,6 +295,13 @@
         e.preventDefault();
         setLayoutSwapped(!isLayoutSwapped());
         pill.textContent = isLayoutSwapped() ? 'Switch' : 'Xbox';
+      });
+
+      row.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          row.click();
+        }
       });
 
       stPanel.appendChild(row);

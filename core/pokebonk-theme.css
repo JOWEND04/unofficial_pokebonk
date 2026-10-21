@@ -159,6 +159,27 @@
   transform: translateY(0);
 }
 
+/* Controller Focus Styling for Settings Rows */
+.st-row.tog {
+  outline: none;
+  cursor: pointer !important;
+  border-radius: 12px;
+  transition: background 0.15s ease, outline 0.15s ease;
+}
+
+.st-row.tog:focus,
+.st-row.tog.pad-focus {
+  outline: 2.5px solid #ffcc33 !important;
+  outline-offset: 2px !important;
+  border-radius: 12px !important;
+  background: rgba(255, 204, 51, 0.15) !important;
+}
+
+.st-row.tog:focus .switch,
+.st-row.tog.pad-focus .switch {
+  filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.8)) !important;
+}
+
 /* Hide Redundant Fullscreen Buttons */
 .fs-btn,
 .tc-fs,
@@ -169,11 +190,28 @@ button[aria-label*="Fullscreen" i] {
   display: none !important;
 }
 
+/* Clean up website legal footer clutter on title screen */
+.mm-foot .mm-legal {
+  display: none !important;
+}
+
 /* Hide keyboard indicator tags on mobile touch screens */
 @media (hover: none) and (pointer: coarse) {
   .back-btn kbd,
   button kbd,
   .st-row kbd {
     display: none !important;
+  }
+}
+
+/* Mobile & Landscape Top Banner Optimization */
+@media (max-height: 640px), (orientation: landscape) {
+  .mm-top {
+    max-width: 52vw !important;
+    right: calc(14px + var(--sr, 0px)) !important;
+    left: auto !important;
+  }
+  .banner {
+    top: calc(var(--hb, 64px) + 52px) !important;
   }
 }

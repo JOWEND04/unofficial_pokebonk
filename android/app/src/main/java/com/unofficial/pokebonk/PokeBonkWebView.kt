@@ -14,6 +14,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 
 @SuppressLint("SetJavaScriptEnabled")
 class PokeBonkWebView(context: Context, private val updateManager: UpdateManager) : WebView(context) {
