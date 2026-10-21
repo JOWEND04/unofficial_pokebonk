@@ -9,9 +9,8 @@ window.addEventListener('DOMContentLoaded', () => {
             margin: 0 !important; padding: 0 !important; 
             width: 100vw !important; height: 100vh !important; 
             overflow: hidden !important; background: #000 !important; 
-            display: flex !important; align-items: center !important; justify-content: center !important;
         }
-        canvas { 
+        canvas#game { 
             width: 100vw !important; height: 100vh !important; 
             max-width: 100vw !important; max-height: 100vh !important;
             object-fit: contain !important; margin: auto !important; position: absolute !important;
