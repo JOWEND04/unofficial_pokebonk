@@ -2,7 +2,7 @@ param(
     [ValidateSet("patch", "minor", "major")]
     [string]$Type = "patch",
 
-    [ValidateSet("all", "android", "windows")]
+    [ValidateSet("all", "android", "windows", "ios")]
     [string]$Target = "all",
 
     [switch]$Commit,
@@ -30,7 +30,7 @@ if ($Commit -and -not $DryRun) {
         $gitExe = "git"
     }
 
-    & $gitExe add android/app/build.gradle.kts windows/package.json
+    & $gitExe add android/app/build.gradle.kts windows/package.json ios/PokeBonk/Resources/Info.plist ios/PokeBonk.xcodeproj/project.pbxproj
     $commitMsg = "chore(release): bump version ($Target $Type)"
     & $gitExe commit -m $commitMsg
 

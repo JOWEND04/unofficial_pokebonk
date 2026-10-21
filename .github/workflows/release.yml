@@ -6,6 +6,7 @@ on:
     paths:
       - 'android/**'
       - 'windows/**'
+      - 'ios/**'
       - 'scripts/**'
       - '.github/workflows/**'
   workflow_dispatch:
@@ -19,6 +20,7 @@ on:
           - all
           - android
           - windows
+          - ios
       bump_type:
         description: 'Version bump level'
         required: true
@@ -39,6 +41,7 @@ jobs:
     outputs:
       build_android: ${{ steps.bump.outputs.build_android }}
       build_windows: ${{ steps.bump.outputs.build_windows }}
+      build_ios: ${{ steps.bump.outputs.build_ios }}
       new_sha: ${{ steps.bump.outputs.new_sha }}
     steps:
       - name: Checkout Repository
@@ -64,6 +67,7 @@ jobs:
             echo "Skipping automated bump for CI/bot commit."
             echo "build_android=false" >> $GITHUB_OUTPUT
             echo "build_windows=false" >> $GITHUB_OUTPUT
+            echo "build_ios=false" >> $GITHUB_OUTPUT
             echo "new_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -98,23 +102,37 @@ jobs:
 
             HAS_ANDROID=false
             HAS_WINDOWS=false
+            HAS_IOS=false
             if echo "$CHANGED_FILES" | grep -q '^android/'; then HAS_ANDROID=true; fi
             if echo "$CHANGED_FILES" | grep -q '^windows/'; then HAS_WINDOWS=true; fi
-            if echo "$CHANGED_FILES" | grep -q '^scripts/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
-            if echo "$CHANGED_FILES" | grep -q '^\.github/workflows/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^ios/'; then HAS_IOS=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^scripts/'; then HAS_ANDROID=true; HAS_WINDOWS=true; HAS_IOS=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^\.github/workflows/'; then HAS_ANDROID=true; HAS_WINDOWS=true; HAS_IOS=true; fi
 
             if echo "$COMMIT_MSG" | grep -iqE '(bump version|release)'; then
               if echo "$COMMIT_MSG" | grep -iq 'android'; then HAS_ANDROID=true; fi
               if echo "$COMMIT_MSG" | grep -iq 'windows'; then HAS_WINDOWS=true; fi
-              if ! $HAS_ANDROID && ! $HAS_WINDOWS; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
+              if echo "$COMMIT_MSG" | grep -iq 'ios'; then HAS_IOS=true; fi
+              if ! $HAS_ANDROID && ! $HAS_WINDOWS && ! $HAS_IOS; then
+                HAS_ANDROID=true
+                HAS_WINDOWS=true
+                HAS_IOS=true
+              fi
             fi
 
-            if [ "$HAS_ANDROID" = "true" ] && [ "$HAS_WINDOWS" = "true" ]; then
+            COUNT=0
+            if [ "$HAS_ANDROID" = "true" ]; then COUNT=$((COUNT + 1)); fi
+            if [ "$HAS_WINDOWS" = "true" ]; then COUNT=$((COUNT + 1)); fi
+            if [ "$HAS_IOS" = "true" ]; then COUNT=$((COUNT + 1)); fi
+
+            if [ $COUNT -gt 1 ] || [ $COUNT -eq 0 ]; then
               TARGET="all"
             elif [ "$HAS_ANDROID" = "true" ]; then
               TARGET="android"
             elif [ "$HAS_WINDOWS" = "true" ]; then
               TARGET="windows"
+            elif [ "$HAS_IOS" = "true" ]; then
+              TARGET="ios"
             else
               TARGET="all"
             fi
@@ -127,6 +145,7 @@ jobs:
             echo "No relevant code changes detected."
             echo "build_android=false" >> $GITHUB_OUTPUT
             echo "build_windows=false" >> $GITHUB_OUTPUT
+            echo "build_ios=false" >> $GITHUB_OUTPUT
             echo "new_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -137,7 +156,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            git add android/app/build.gradle.kts windows/package.json
+            git add android/app/build.gradle.kts windows/package.json ios/PokeBonk/Resources/Info.plist ios/PokeBonk.xcodeproj/project.pbxproj 2>/dev/null || true
 
             if ! git diff --cached --quiet; then
               COMMIT_TEXT="chore(release): auto-bump version ($TARGET $BUMP_TYPE) [skip ci]"
@@ -163,6 +182,12 @@ jobs:
             echo "build_windows=true" >> $GITHUB_OUTPUT
           else
             echo "build_windows=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$TARGET" = "all" ] || [ "$TARGET" = "ios" ]; then
+            echo "build_ios=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_ios=false" >> $GITHUB_OUTPUT
           fi
 
           echo "new_sha=$NEW_SHA" >> $GITHUB_OUTPUT
@@ -224,10 +249,7 @@ jobs:
             Download the latest versions under **Assets** below:
             * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support (v${{ env.VERSION_NAME }}, build ${{ env.VERSION_CODE }}).
             * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
-              * **`F8`:** Cycle Stick Sensitivity (50% – 200%)
-              * **`F9`:** Swap `A/B` & `X/Y` button layout
-              * **`F11` / `Alt+Enter`:** Toggle Fullscreen / Windowed
-              * **`Hold Start + Select (1.5s)`:** Quit game from controller
+            * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             PokeBonk.apk
             version.json
@@ -300,12 +322,62 @@ jobs:
             Download the latest versions under **Assets** below:
             * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
             * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
-              * **`F8`:** Cycle Stick Sensitivity (50% – 200%)
-              * **`F9`:** Swap `A/B` & `X/Y` button layout
-              * **`F11` / `Alt+Enter`:** Toggle Fullscreen / Windowed
-              * **`Hold Start + Select (1.5s)`:** Quit game from controller
+            * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             windows/dist/PokeBonk.exe
             windows/dist/latest.yml
+          prerelease: false
+          make_latest: true
+
+  build-ios:
+    needs: prepare-and-bump
+    if: needs.prepare-and-bump.outputs.build_ios == 'true'
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app || sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Build Unsigned iOS App Bundle
+        run: |
+          xcodebuild \
+            -project ios/PokeBonk.xcodeproj \
+            -scheme PokeBonk \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package Payload into Sideloadable IPA
+        run: |
+          mkdir -p build/Payload
+          cp -R build/Build/Products/Release-iphoneos/PokeBonk.app build/Payload/
+          cd build
+          zip -qr ../PokeBonk.ipa Payload
+          cd ..
+          ls -la PokeBonk.ipa
+
+      - name: Publish Raw IPA to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest
+          name: "PokéBonk Latest Build"
+          body: |
+            ### Latest Standalone PokéBonk Builds
+            Download the latest versions under **Assets** below:
+            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
+            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
+            * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
+          files: |
+            PokeBonk.ipa
           prerelease: false
           make_latest: true

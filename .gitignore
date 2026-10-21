@@ -17,6 +17,14 @@ obj/
 *.exe
 *.msi
 
+# iOS / Xcode
+*.ipa
+*.app
+DerivedData/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad/
+
 # OS Files
 .DS_Store
 Thumbs.db
