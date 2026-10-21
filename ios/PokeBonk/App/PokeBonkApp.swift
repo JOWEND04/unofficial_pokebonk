@@ -7,10 +7,17 @@ struct PokeBonkApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .ignoresSafeArea(.all)
-                .statusBar(hidden: true)
-                .persistentSystemOverlays(.hidden)
+            Group {
+                if #available(iOS 16.0, *) {
+                    ContentView()
+                        .ignoresSafeArea(.all)
+                        .persistentSystemOverlays(.hidden)
+                } else {
+                    ContentView()
+                        .ignoresSafeArea(.all)
+                }
+            }
+            .statusBar(hidden: true)
         }
     }
 }
@@ -20,7 +27,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Prevent display dimming / sleeping while playing
+        // Prevent screen from sleeping during gameplay
         UIApplication.shared.isIdleTimerDisabled = true
         return true
     }
