@@ -1,7 +1,25 @@
 const { app, BrowserWindow, session, powerSaveBlocker, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const RPC = require('discord-rpc');
 const { autoUpdater } = require('electron-updater');
+
+// Ensure app-update.yml exists in resources so electron-updater never throws ENOENT in portable builds
+if (process.resourcesPath) {
+  try {
+    const updateConfigPath = path.join(process.resourcesPath, 'app-update.yml');
+    if (!fs.existsSync(updateConfigPath)) {
+      fs.writeFileSync(updateConfigPath, [
+        'owner: JOWEND04',
+        'repo: unofficial_pokebonk_app',
+        'provider: github',
+        'updaterCacheDirName: pokebonk-updater'
+      ].join('\n'), 'utf8');
+    }
+  } catch (err) {
+    console.warn('Unable to write fallback app-update.yml:', err.message);
+  }
+}
 
 app.setPath('userData', path.join(app.getPath('appData'), 'PokeBonk'));
 
@@ -66,7 +84,7 @@ autoUpdater.on('download-progress', (progress) => {
 
 autoUpdater.on('error', (error) => {
   const msg = error && error.message ? error.message : '';
-  if (msg.includes('latest.yml') || msg.includes('404')) {
+  if (msg.includes('latest.yml') || msg.includes('404') || msg.includes('app-update.yml') || msg.includes('ENOENT')) {
     sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
   } else {
     sendLauncherStatus('error', {
@@ -86,7 +104,7 @@ autoUpdater.on('update-downloaded', () => {
       buttons: ['Restart', 'Later']
     }).then((result) => {
       if (result.response === 0) {
-        autoUpdater.quitAndInstall();
+        autoUpdater.quitAndInstall(false, true);
       }
     }).catch(() => {});
   }
@@ -265,9 +283,14 @@ ipcMain.on('update-game', async () => {
       sendLauncherStatus('up-to-date', { message: 'You are already on the latest version.' });
     }
   } catch (error) {
-    sendLauncherStatus('error', {
-      message: error && error.message ? error.message : 'Unable to update right now.'
-    });
+    const msg = error && error.message ? error.message : '';
+    if (msg.includes('latest.yml') || msg.includes('404') || msg.includes('app-update.yml') || msg.includes('ENOENT')) {
+      sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
+    } else {
+      sendLauncherStatus('error', {
+        message: 'Unable to check for updates right now.'
+      });
+    }
   }
 });
 

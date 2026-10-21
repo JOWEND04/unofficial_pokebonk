@@ -20,6 +20,12 @@
     "portable": {
       "artifactName": "PokeBonk.exe"
     },
+    "extraResources": [
+      {
+        "from": "app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
     "publish": {
       "provider": "github",
       "owner": "JOWEND04",
