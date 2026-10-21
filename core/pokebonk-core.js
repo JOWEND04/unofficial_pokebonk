@@ -683,8 +683,76 @@
     updateMenuVisuals();
   }
 
+  // --- Desktop Custom Title Bar (Windows) ---
+  function initDesktopTitleBar() {
+    if (NativeBridge.platform !== 'windows') return;
+    if (document.getElementById('pb-desktop-titlebar')) return;
+
+    document.body.classList.add('pb-has-titlebar');
+
+    const bar = document.createElement('div');
+    bar.id = 'pb-desktop-titlebar';
+    bar.innerHTML = `
+      <div class="pb-tb-left">
+        <span class="pb-pokeball-icon"></span>
+        <span class="pb-tb-title">POKÉBONK</span>
+        <span id="pb-tb-version" class="pb-tb-version"></span>
+      </div>
+      <div class="pb-tb-drag-area"></div>
+      <div class="pb-tb-right">
+        <button class="pb-tb-btn" id="pb-tb-hud-btn" title="Open Game Menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Menu</span>
+        </button>
+        <button class="pb-tb-btn" id="pb-tb-reload-btn" title="Reload Game">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+        </button>
+        <button class="pb-tb-btn" id="pb-tb-fs-btn" title="Toggle Fullscreen (F11)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+      </div>
+    `;
+
+    document.body.prepend(bar);
+
+    NativeBridge.getAppVersion((ver) => {
+      const vEl = document.getElementById('pb-tb-version');
+      if (vEl && ver) {
+        vEl.textContent = 'v' + ver;
+      }
+    });
+
+    document.getElementById('pb-tb-hud-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const toggle = document.getElementById('pb-hud-toggle');
+      if (toggle) toggle.click();
+    });
+
+    document.getElementById('pb-tb-reload-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      NativeBridge.reloadGame();
+    });
+
+    document.getElementById('pb-tb-fs-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      NativeBridge.toggleFullscreen();
+    });
+
+    window.addEventListener('pb-fullscreen-change', (e) => {
+      const isFs = !!(e.detail && e.detail.isFullScreen);
+      if (isFs) {
+        bar.classList.add('pb-fs-hidden');
+        document.body.classList.add('pb-in-fullscreen');
+      } else {
+        bar.classList.remove('pb-fs-hidden');
+        document.body.classList.remove('pb-in-fullscreen');
+      }
+    });
+  }
+
   // --- Startup Observers ---
   function initEngine() {
+    initDesktopTitleBar();
     initHUD();
     patchSettingsMenu();
 

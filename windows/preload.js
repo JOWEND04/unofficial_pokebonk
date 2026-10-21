@@ -41,6 +41,11 @@ window.addEventListener('DOMContentLoaded', () => {
     console.error('Failed to inject core engine:', err);
   }
 
+  // 2b. Fullscreen state forwarding
+  ipcRenderer.on('fullscreen-change', (event, isFs) => {
+    window.dispatchEvent(new CustomEvent('pb-fullscreen-change', { detail: { isFullScreen: isFs } }));
+  });
+
   // 3. Desktop Hotkeys
   window.addEventListener('keydown', (e) => {
     // F11 or Alt+Enter: Toggle Fullscreen

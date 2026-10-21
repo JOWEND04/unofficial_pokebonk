@@ -331,6 +331,12 @@ function createMainWindow() {
     show: false,
     backgroundColor: '#0e0a20',
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0e0a20',
+      symbolColor: '#ffcc33',
+      height: 38
+    },
     title: 'PokéBonk',
     icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
@@ -361,6 +367,18 @@ function createMainWindow() {
     if (!url.includes('pokebonk.com') && !url.includes('solais.cloud')) {
       event.preventDefault();
       shell.openExternal(url);
+    }
+  });
+
+  mainWindow.on('enter-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-change', true);
+    }
+  });
+
+  mainWindow.on('leave-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-change', false);
     }
   });
 
