@@ -12,6 +12,8 @@
 		100100032C00000100000001 /* GameWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100200032C00000100000001 /* GameWebView.swift */; };
 		100100042C00000100000001 /* GamepadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100200042C00000100000001 /* GamepadManager.swift */; };
 		100100052C00000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100200052C00000100000001 /* Assets.xcassets */; };
+		100100062C00000100000001 /* pokebonk-core.js in Resources */ = {isa = PBXBuildFile; fileRef = 100200072C00000100000001 /* pokebonk-core.js */; };
+		100100072C00000100000001 /* pokebonk-theme.css in Resources */ = {isa = PBXBuildFile; fileRef = 100200082C00000100000001 /* pokebonk-theme.css */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +24,8 @@
 		100200042C00000100000001 /* GamepadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadManager.swift; sourceTree = "<group>"; };
 		100200052C00000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100200062C00000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100200072C00000100000001 /* pokebonk-core.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "pokebonk-core.js"; sourceTree = "<group>"; };
+		100200082C00000100000001 /* pokebonk-theme.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "pokebonk-theme.css"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +96,8 @@
 			children = (
 				100200052C00000100000001 /* Assets.xcassets */,
 				100200062C00000100000001 /* Info.plist */,
+				100200072C00000100000001 /* pokebonk-core.js */,
+				100200082C00000100000001 /* pokebonk-theme.css */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -155,6 +161,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				100100052C00000100000001 /* Assets.xcassets in Resources */,
+				100100062C00000100000001 /* pokebonk-core.js in Resources */,
+				100100072C00000100000001 /* pokebonk-theme.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
