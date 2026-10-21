@@ -139,13 +139,14 @@
 
       <div class="actions">
         <button id="launch" class="primary">Launch Game</button>
-        <button id="update" class="secondary">Update & Launch</button>
+        <button id="update" class="secondary">Update &amp; Launch</button>
         <button id="exit" class="danger" style="grid-column: 1 / -1;">Exit</button>
       </div>
     </div>
 
     <script>
       const { ipcRenderer } = require('electron');
+
       const statusEl = document.getElementById('status');
 
       function setStatus(type, title, message) {
