@@ -18,8 +18,8 @@ window.addEventListener('DOMContentLoaded', () => {
         body.controller-active, body.controller-active * { cursor: none !important; }
         
         #pb-desktop-header {
-            position: fixed; top: 0; right: 0; z-index: 2147483647;
-            display: flex; gap: 8px; padding: 12px 16px;
+            position: fixed; top: 14px; right: 16px; z-index: 2147483647;
+            display: flex; gap: 8px; align-items: center;
             opacity: 0; transition: opacity 0.3s ease;
             pointer-events: none;
         }
@@ -28,18 +28,49 @@ window.addEventListener('DOMContentLoaded', () => {
             pointer-events: auto;
         }
         .pb-win-btn {
-            background: rgba(30, 24, 60, 0.88); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.18);
-            width: 32px; height: 32px; border-radius: 999px; font-weight: 800; font-size: 14px;
+            background: #fffffff2; color: #2a2440; border: 2px solid #ffffff;
+            width: 34px; height: 34px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center; cursor: pointer;
-            box-shadow: 0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4);
-            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 3px 0 #1a124630, 0 4px 12px #1a12462e;
             pointer-events: auto !important;
-            transition: all 0.15s ease;
+            transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
         }
-        .pb-win-btn:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.3); color: #ffffff; transform: translateY(-1.5px); }
-        .pb-win-btn:active { transform: translateY(1.5px); box-shadow: 0 1px 0 rgba(14, 10, 32, 0.8); }
-        #pb-close-btn:hover { background: #ff5a5f !important; border-color: #ff5a5f !important; color: #ffffff !important; box-shadow: 0 3px 0 #b33035, 0 4px 12px rgba(255, 90, 95, 0.35) !important; }
-        #pb-close-btn:active { box-shadow: 0 1px 0 #b33035 !important; }
+        .pb-win-btn:hover {
+            filter: brightness(1.06);
+            transform: translateY(-1.5px);
+        }
+        .pb-win-btn:active {
+            transform: translateY(1.5px);
+            box-shadow: 0 1px 0 #1a124630;
+        }
+        #pb-close-btn {
+            background: linear-gradient(135deg, #ff7a7f, #ff5a5f 60%, #e0454a);
+            border: 2px solid #ffffff;
+            box-shadow: 0 3px 0 #9c272c, 0 4px 12px rgba(255, 90, 95, 0.4);
+            color: #ffffff;
+        }
+        #pb-close-btn:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1.5px);
+        }
+        #pb-close-btn:active {
+            transform: translateY(1.5px);
+            box-shadow: 0 1px 0 #9c272c;
+        }
+
+        /* Remove browser fullscreen buttons that are useless in standalone desktop app */
+        .fs-btn, .tc-fs,
+        button[title*="completa" i],
+        button[title*="Fullscreen" i],
+        button[aria-label*="completa" i],
+        button[aria-label*="Fullscreen" i] {
+            display: none !important;
+        }
+
+        /* Clean up website legal footer clutter on title screen */
+        .mm-foot .mm-legal {
+            display: none !important;
+        }
 
         #pb-controller-toast {
             position: fixed; top: 14px; right: 92px; z-index: 2147483647;
@@ -89,8 +120,12 @@ window.addEventListener('DOMContentLoaded', () => {
     const header = document.createElement('div');
     header.id = 'pb-desktop-header';
     header.innerHTML = `
-        <div class="pb-win-btn" id="pb-min-btn" title="Minimize">&mdash;</div>
-        <div class="pb-win-btn" id="pb-close-btn" title="Close App">&times;</div>
+        <div class="pb-win-btn" id="pb-min-btn" title="Minimize">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </div>
+        <div class="pb-win-btn" id="pb-close-btn" title="Close App">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg>
+        </div>
     `;
     document.body.appendChild(header);
 

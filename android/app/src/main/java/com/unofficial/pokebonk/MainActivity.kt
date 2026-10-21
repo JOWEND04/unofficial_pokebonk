@@ -554,6 +554,26 @@ class MainActivity : ComponentActivity() {
                         .st-row.tog:focus .switch, .st-row.tog.pad-focus .switch {
                             filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.8)) !important;
                         }
+
+                        /* Hide redundant browser fullscreen toggles */
+                        .fs-btn, .tc-fs,
+                        button[title*="completa" i],
+                        button[title*="Fullscreen" i],
+                        button[aria-label*="completa" i],
+                        button[aria-label*="Fullscreen" i] {
+                            display: none !important;
+                        }
+
+                        /* Clean up website legal footer clutter on title screen */
+                        .mm-foot .mm-legal {
+                            display: none !important;
+                        }
+
+                        /* Hide keyboard key indicators (Esc, M, Tab) on mobile touch screens */
+                        .back-btn kbd, button kbd, .st-row kbd {
+                            display: none !important;
+                        }
+
                         @media (max-height: 640px), (orientation: landscape) {
                             .mm-top {
                                 max-width: 52vw !important;
@@ -632,6 +652,81 @@ class MainActivity : ComponentActivity() {
                                 });
                             }
                         }
+
+                        // 3. Sink native wrapper options into PokéBonk's Settings menu
+                        const firstRow = document.querySelector('.st-row');
+                        const stPanel = firstRow ? firstRow.parentElement : document.querySelector('.panel.pz-st');
+                        if (stPanel && !document.getElementById('pb-native-layout-row')) {
+                            const isEn = document.documentElement.lang === 'en' || document.documentElement.dataset.lang === 'en';
+
+                            const layoutRow = document.createElement('div');
+                            layoutRow.id = 'pb-native-layout-row';
+                            layoutRow.className = 'st-row tog';
+                            layoutRow.setAttribute('tabindex', '0');
+                            layoutRow.style.cursor = 'pointer';
+
+                            const layoutSpan = document.createElement('span');
+                            layoutSpan.innerHTML = (isEn ? 'Controller Button Layout' : 'Distribución de botones del mando') +
+                                '<small>' + (isEn ? 'Xbox: South = A (Default) / Switch: East = A' : 'Xbox: Abajo = A / Switch: Derecha = A') + '</small>';
+                            layoutRow.appendChild(layoutSpan);
+
+                            const layoutPill = document.createElement('button');
+                            layoutPill.className = 'pill on';
+                            layoutPill.style.fontSize = '11px';
+                            layoutPill.style.padding = '4px 12px';
+                            layoutPill.style.borderRadius = '999px';
+                            layoutPill.style.pointerEvents = 'none';
+                            layoutPill.textContent = isSwapped() ? 'Switch' : 'Xbox';
+                            layoutRow.appendChild(layoutPill);
+
+                            layoutRow.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                toggleLayout();
+                                layoutPill.textContent = isSwapped() ? 'Switch' : 'Xbox';
+                            });
+                            layoutRow.addEventListener('keydown', (e) => {
+                                if (e.key === ' ' || e.key === 'Enter') {
+                                    e.preventDefault();
+                                    layoutRow.click();
+                                }
+                            });
+                            stPanel.appendChild(layoutRow);
+
+                            const updateRow = document.createElement('div');
+                            updateRow.id = 'pb-native-update-row';
+                            updateRow.className = 'st-row';
+                            updateRow.setAttribute('tabindex', '0');
+                            updateRow.style.cursor = 'pointer';
+
+                            const updateSpan = document.createElement('span');
+                            updateSpan.innerHTML = (isEn ? 'App Updates' : 'Actualizaciones de la App') +
+                                '<small>' + (isEn ? 'Check GitHub for new native Android updates' : 'Comprobar nuevas versiones en GitHub') + '</small>';
+                            updateRow.appendChild(updateSpan);
+
+                            const updatePill = document.createElement('button');
+                            updatePill.className = 'pill';
+                            updatePill.style.fontSize = '11px';
+                            updatePill.style.padding = '4px 12px';
+                            updatePill.style.borderRadius = '999px';
+                            updatePill.style.background = 'rgba(255,204,51,0.2)';
+                            updatePill.style.color = '#ffcc33';
+                            updatePill.textContent = isEn ? 'Check' : 'Comprobar';
+                            updateRow.appendChild(updatePill);
+
+                            updateRow.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                if (window.AndroidApp && window.AndroidApp.checkForUpdatesManual) {
+                                    window.AndroidApp.checkForUpdatesManual();
+                                }
+                            });
+                            updateRow.addEventListener('keydown', (e) => {
+                                if (e.key === ' ' || e.key === 'Enter') {
+                                    e.preventDefault();
+                                    updateRow.click();
+                                }
+                            });
+                            stPanel.appendChild(updateRow);
+                        }
                     }
 
                     let patchDebounce = null;
@@ -682,21 +777,21 @@ class MainActivity : ComponentActivity() {
 
                         const menuToggleBtn = document.createElement('button');
                         menuToggleBtn.id = 'pb-android-menu-toggle';
-                        menuToggleBtn.textContent = 'MENU';
+                        menuToggleBtn.title = 'PokéBonk App Menu';
+                        menuToggleBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="4"></rect><path d="M6 12h4m-2-2v4m7-2h.01m3 0h.01"></path></svg>';
                         Object.assign(menuToggleBtn.style, {
-                            padding: '7px 16px',
-                            borderRadius: '999px',
-                            border: '1px solid rgba(255, 255, 255, 0.22)',
-                            background: 'rgba(30, 24, 60, 0.88)',
-                            color: '#ffffff',
-                            font: '800 12px/1.2 "Nunito", system-ui, sans-serif',
-                            letterSpacing: '0.06em',
-                            textTransform: 'uppercase',
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '50%',
+                            border: '2px solid #ffffff',
+                            background: '#fffffff5',
+                            color: '#2a2440',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             cursor: 'pointer',
-                            boxShadow: '0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4)',
-                            backdropFilter: 'blur(10px)',
-                            webkitBackdropFilter: 'blur(10px)',
-                            transition: 'all 0.15s ease'
+                            boxShadow: '0 4px #1a124640, 0 6px 14px #1a12464d',
+                            transition: 'transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease, background 0.15s ease'
                         });
 
                         const menuPanel = document.createElement('div');
@@ -709,12 +804,17 @@ class MainActivity : ComponentActivity() {
                             padding: '12px',
                             width: '250px',
                             borderRadius: '18px',
-                            border: '1px solid rgba(255, 255, 255, 0.16)',
-                            background: 'radial-gradient(circle at 50% 0%, rgba(38, 30, 82, 0.96) 0%, rgba(20, 16, 44, 0.96) 100%)',
-                            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                            border: '1.5px solid rgba(255, 255, 255, 0.2)',
+                            background: 'radial-gradient(circle at 50% 0%, rgba(38, 30, 82, 0.98) 0%, rgba(20, 16, 44, 0.98) 100%)',
+                            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.75), 0 4px 0 #0e0a20',
                             backdropFilter: 'blur(14px)',
                             webkitBackdropFilter: 'blur(14px)'
                         });
+
+                        const panelHeader = document.createElement('div');
+                        panelHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:2px 4px 8px;border-bottom:1px solid rgba(255,255,255,0.12);margin-bottom:8px;';
+                        panelHeader.innerHTML = '<span style="font-weight:900;font-size:13px;color:#ffffff;letter-spacing:0.02em;">PokéBonk App</span><span style="font-size:10px;font-weight:900;background:linear-gradient(135deg,#ff9a3a,#ff5a5f);color:#fff;padding:2px 8px;border-radius:999px;box-shadow:0 2px 6px rgba(255,90,95,0.35);">NATIVE</span>';
+                        menuPanel.appendChild(panelHeader);
 
                         function createMenuItem(id, text, onClick) {
                             const item = document.createElement('button');
@@ -757,13 +857,13 @@ class MainActivity : ComponentActivity() {
                             if (next) {
                                 menuToggleBtn.style.background = 'linear-gradient(180deg, #ffe066 0%, #ffcc33 55%, #f2a516 100%)';
                                 menuToggleBtn.style.color = '#2a2440';
-                                menuToggleBtn.style.border = '1px solid rgba(255, 255, 255, 0.4)';
-                                menuToggleBtn.style.boxShadow = '0 3px 0 #b37400, 0 4px 12px rgba(242, 165, 22, 0.35)';
+                                menuToggleBtn.style.boxShadow = '0 2px 0 #b37400, 0 4px 10px rgba(242, 165, 22, 0.4)';
+                                menuToggleBtn.style.transform = 'translateY(2px)';
                             } else {
-                                menuToggleBtn.style.background = 'rgba(30, 24, 60, 0.88)';
-                                menuToggleBtn.style.color = '#ffffff';
-                                menuToggleBtn.style.border = '1px solid rgba(255, 255, 255, 0.22)';
-                                menuToggleBtn.style.boxShadow = '0 3px 0 rgba(14, 10, 32, 0.8), 0 4px 12px rgba(0,0,0,0.4)';
+                                menuToggleBtn.style.background = '#fffffff5';
+                                menuToggleBtn.style.color = '#2a2440';
+                                menuToggleBtn.style.boxShadow = '0 4px #1a124640, 0 6px 14px #1a12464d';
+                                menuToggleBtn.style.transform = 'translateY(0)';
                             }
                             if (next) {
                                 updateMenuButtonText();
