@@ -1,0 +1,291 @@
+name: Automated Build & Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - 'android/**'
+      - 'windows/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Platform(s) to release'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - android
+          - windows
+      bump_type:
+        description: 'Version bump level'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-and-bump:
+    runs-on: ubuntu-latest
+    outputs:
+      build_android: ${{ steps.bump.outputs.build_android }}
+      build_windows: ${{ steps.bump.outputs.build_windows }}
+      new_sha: ${{ steps.bump.outputs.new_sha }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Determine Changes & Bump Version
+        id: bump
+        run: |
+          set -e
+
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Recent commit: $COMMIT_MSG"
+
+          if [[ "$COMMIT_MSG" == *"[skip ci]"* ]] || [[ "${{ github.actor }}" == "github-actions[bot]" ]]; then
+            echo "Skipping automated bump for CI/bot commit."
+            echo "build_android=false" >> $GITHUB_OUTPUT
+            echo "build_windows=false" >> $GITHUB_OUTPUT
+            echo "new_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ inputs.target }}"
+            BUMP_TYPE="${{ inputs.bump_type }}"
+          else
+            BUMP_TYPE="patch"
+            if echo "$COMMIT_MSG" | grep -iqE '(\[skip bump\]|bump version)'; then
+              echo "Commit indicates manual version bump. Skipping auto-bump."
+              BUMP_TYPE="none"
+            fi
+
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+
+            HAS_ANDROID=false
+            HAS_WINDOWS=false
+            if echo "$CHANGED_FILES" | grep -q '^android/'; then HAS_ANDROID=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^windows/'; then HAS_WINDOWS=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^scripts/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
+            if echo "$CHANGED_FILES" | grep -q '^\.github/workflows/'; then HAS_ANDROID=true; HAS_WINDOWS=true; fi
+
+            if [ "$HAS_ANDROID" = "true" ] && [ "$HAS_WINDOWS" = "true" ]; then
+              TARGET="all"
+            elif [ "$HAS_ANDROID" = "true" ]; then
+              TARGET="android"
+            elif [ "$HAS_WINDOWS" = "true" ]; then
+              TARGET="windows"
+            else
+              TARGET="none"
+            fi
+          fi
+
+          echo "Target platform: $TARGET"
+          echo "Bump type: $BUMP_TYPE"
+
+          if [ "$TARGET" = "none" ]; then
+            echo "No relevant code changes detected."
+            echo "build_android=false" >> $GITHUB_OUTPUT
+            echo "build_windows=false" >> $GITHUB_OUTPUT
+            echo "new_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$BUMP_TYPE" != "none" ]; then
+            python3 scripts/bump_version.py --target "$TARGET" --type "$BUMP_TYPE"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            git add android/app/build.gradle.kts windows/package.json
+
+            if ! git diff --cached --quiet; then
+              COMMIT_TEXT="chore(release): auto-bump version ($TARGET $BUMP_TYPE) [skip ci]"
+              git commit -m "$COMMIT_TEXT"
+              git push origin HEAD:${{ github.ref_name }}
+              NEW_SHA=$(git rev-parse HEAD)
+              echo "Committed and pushed new version: $NEW_SHA"
+            else
+              echo "No version files changed."
+              NEW_SHA=${{ github.sha }}
+            fi
+          else
+            NEW_SHA=${{ github.sha }}
+          fi
+
+          if [ "$TARGET" = "all" ] || [ "$TARGET" = "android" ]; then
+            echo "build_android=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_android=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$TARGET" = "all" ] || [ "$TARGET" = "windows" ]; then
+            echo "build_windows=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_windows=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "new_sha=$NEW_SHA" >> $GITHUB_OUTPUT
+
+  build-android:
+    needs: prepare-and-bump
+    if: needs.prepare-and-bump.outputs.build_android == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+          build-root-directory: android
+
+      - name: Build Optimized Release APK
+        working-directory: ./android
+        run: gradle assembleRelease --stacktrace
+
+      - name: Rename APK for Clean Download
+        run: cp android/app/build/outputs/apk/release/app-release.apk PokeBonk.apk
+
+      - name: Extract Version Info & Create Metadata
+        run: |
+          VERSION_NAME=$(grep 'versionName =' android/app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode =' android/app/build.gradle.kts | head -1 | sed -E 's/.*= *([0-9]+).*/\1/')
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          cat << EOF > version.json
+          {
+            "versionName": "$VERSION_NAME",
+            "versionCode": $VERSION_CODE,
+            "commit": "${{ needs.prepare-and-bump.outputs.new_sha }}",
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
+      - name: Publish Raw APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "PokéBonk Latest Build"
+          body: |
+            ### Latest Standalone PokéBonk Builds
+            Download the latest versions under **Assets** below:
+            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support (v${{ env.VERSION_NAME }}, build ${{ env.VERSION_CODE }}).
+            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
+              * **`F8`:** Cycle Stick Sensitivity (50% – 200%)
+              * **`F9`:** Swap `A/B` & `X/Y` button layout
+              * **`F11` / `Alt+Enter`:** Toggle Fullscreen / Windowed
+              * **`Hold Start + Select (1.5s)`:** Quit game from controller
+          files: |
+            PokeBonk.apk
+            version.json
+          prerelease: false
+          make_latest: true
+
+  build-windows:
+    needs: prepare-and-bump
+    if: needs.prepare-and-bump.outputs.build_windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-and-bump.outputs.new_sha }}
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies & Build Fast Portable EXE
+        working-directory: ./windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm install
+          npm run dist
+
+      - name: Generate Auto-Updater Manifest (latest.yml)
+        working-directory: ./windows
+        shell: pwsh
+        run: |
+          $exePath = "dist/PokeBonk.exe"
+          if (Test-Path $exePath) {
+            $size = (Get-Item $exePath).Length
+            $hash = (Get-FileHash $exePath -Algorithm SHA512).Hash
+            $hashBytes = [byte[]] -split ($hash -replace '..', '0x$& ')
+            $sha512 = [Convert]::ToBase64String($hashBytes)
+            $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            $pkg = Get-Content package.json | ConvertFrom-Json
+            $ver = $pkg.version
+
+            $lines = @(
+              "version: $ver",
+              "files:",
+              "  - url: PokeBonk.exe",
+              "    sha512: $sha512",
+              "    size: $size",
+              "path: PokeBonk.exe",
+              "sha512: $sha512",
+              "releaseDate: '$date'"
+            )
+            $lines -join "`n" | Set-Content "dist/latest.yml" -Encoding UTF8
+            Write-Host "Successfully generated dist/latest.yml for v$ver"
+          } else {
+            Write-Error "dist/PokeBonk.exe not found!"
+          }
+
+      - name: Publish Raw EXE to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest
+          name: "PokéBonk Latest Build"
+          body: |
+            ### Latest Standalone PokéBonk Builds
+            Download the latest versions under **Assets** below:
+            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
+            * **Windows (`PokeBonk.exe`):** Fast portable fullscreen launcher with native controller support, auto-updater, and sensitivity settings.
+              * **`F8`:** Cycle Stick Sensitivity (50% – 200%)
+              * **`F9`:** Swap `A/B` & `X/Y` button layout
+              * **`F11` / `Alt+Enter`:** Toggle Fullscreen / Windowed
+              * **`Hold Start + Select (1.5s)`:** Quit game from controller
+          files: |
+            windows/dist/PokeBonk.exe
+            windows/dist/latest.yml
+          prerelease: false
+          make_latest: true
