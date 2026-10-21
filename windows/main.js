@@ -291,49 +291,62 @@ function applyUpdateAndRestart(relaunch = true) {
 
   // If running portable or installed on Windows, overwrite the target executable in-place
   if (targetExe && downloadedUpdateFile && fs.existsSync(downloadedUpdateFile)) {
-    const tempBat = path.join(app.getPath('temp'), `pokebonk_updater_${Date.now()}.bat`);
-    const launchCommand = relaunch ? `start "" "${targetExe}"` : '';
+    const tempJs = path.join(app.getPath('temp'), `pb_updater_${Date.now()}.js`);
+    const escapedSource = downloadedUpdateFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const escapedTarget = targetExe.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-    const batContent = [
-      '@echo off',
-      'setlocal',
-      `set "NEW_EXE=${downloadedUpdateFile}"`,
-      `set "TARGET_EXE=${targetExe}"`,
-      `set "PID=${process.pid}"`,
+    const jsContent = [
+      'var fso = new ActiveXObject("Scripting.FileSystemObject");',
+      'var shell = new ActiveXObject("WScript.Shell");',
+      `var pid = ${process.pid};`,
+      `var source = "${escapedSource}";`,
+      `var target = "${escapedTarget}";`,
+      `var shouldRelaunch = ${relaunch ? 'true' : 'false'};`,
       '',
-      ':wait_loop',
-      'timeout /t 1 /nobreak >nul',
-      'tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" >nul',
-      'if not errorlevel 1 goto wait_loop',
+      'try {',
+      '    var wmi = GetObject("winmgmts:");',
+      '    for (var i = 0; i < 40; i++) {',
+      '        var procs = wmi.ExecQuery("Select * from Win32_Process Where ProcessId = " + pid);',
+      '        if (procs.Count === 0) break;',
+      '        WScript.Sleep(250);',
+      '    }',
+      '} catch (_) {',
+      '    WScript.Sleep(1500);',
+      '}',
       '',
-      'set RETRIES=0',
-      ':copy_loop',
-      'copy /Y "%NEW_EXE%" "%TARGET_EXE%" >nul 2>&1',
-      'if not errorlevel 1 goto success',
-      'set /a RETRIES+=1',
-      'if %RETRIES% geq 10 goto finish',
-      'timeout /t 1 /nobreak >nul',
-      'goto copy_loop',
+      'var copied = false;',
+      'for (var j = 0; j < 30; j++) {',
+      '    try {',
+      '        fso.CopyFile(source, target, true);',
+      '        copied = true;',
+      '        break;',
+      '    } catch (_) {',
+      '        WScript.Sleep(300);',
+      '    }',
+      '}',
       '',
-      ':success',
-      launchCommand,
+      'if (copied && shouldRelaunch) {',
+      '    try {',
+      '        shell.Run(\'"\' + target + \'"\', 1, false);',
+      '    } catch (_) {}',
+      '}',
       '',
-      ':finish',
-      '(goto) 2>nul & del "%~f0"'
+      'try {',
+      '    fso.DeleteFile(WScript.ScriptFullName, true);',
+      '} catch (_) {}'
     ].join('\r\n');
 
     try {
-      fs.writeFileSync(tempBat, batContent, 'ascii');
-      const child = spawn('cmd.exe', ['/c', tempBat], {
+      fs.writeFileSync(tempJs, jsContent, 'utf8');
+      const child = spawn('wscript.exe', [tempJs], {
         detached: true,
-        stdio: 'ignore',
-        windowsHide: true
+        stdio: 'ignore'
       });
       child.unref();
       app.exit(0);
       return;
     } catch (e) {
-      console.error('Failed to spawn portable replacement batch script:', e);
+      console.error('Failed to spawn portable replacement script via wscript:', e);
     }
   }
 
