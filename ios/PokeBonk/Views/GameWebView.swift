@@ -13,7 +13,9 @@ struct GameWebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
-        config.preferences.isElementFullscreenEnabled = true
+        if #available(iOS 15.4, *) {
+            config.preferences.isElementFullscreenEnabled = true
+        }
 
         // 1. Inject Theme CSS from Bundle
         if let cssUrl = Bundle.main.url(forResource: "pokebonk-theme", withExtension: "css"),
