@@ -17,22 +17,60 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 let mainWindow = null;
+let launcherWindow = null;
 let sleepBlockerId = null;
+
+function sendLauncherStatus(status, extra = {}) {
+    if (launcherWindow && !launcherWindow.isDestroyed()) {
+        launcherWindow.webContents.send('launcher-status', { status, ...extra });
+    }
+}
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+autoUpdater.on('checking-for-update', () => {
+    sendLauncherStatus('checking');
+});
+
+autoUpdater.on('update-available', (info) => {
+    sendLauncherStatus('update-available', {
+        version: info && info.version ? info.version : 'Unknown',
+        message: 'An update is available.'
+    });
+});
+
+autoUpdater.on('update-not-available', () => {
+    sendLauncherStatus('up-to-date', { message: 'You are on the latest version.' });
+});
+
+autoUpdater.on('download-progress', (progress) => {
+    sendLauncherStatus('downloading', {
+        percent: Math.round(progress.percent || 0),
+        bytesPerSecond: progress.bytesPerSecond || 0,
+        total: progress.total || 0,
+        transferred: progress.transferred || 0
+    });
+});
+
+autoUpdater.on('error', (error) => {
+    sendLauncherStatus('error', { message: error && error.message ? error.message : 'Unable to check for updates right now.' });
+});
+
 autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox(mainWindow, {
+    sendLauncherStatus('ready', { message: 'Update downloaded. Restart to install it.' });
+    const parentWindow = launcherWindow || mainWindow;
+
+    dialog.showMessageBox(parentWindow, {
         type: 'info',
         title: 'Update Ready',
         message: 'A new version of PokéBonk has been downloaded. Restart now to update?',
         buttons: ['Restart', 'Later']
-    }).result.then((result) => {
+    }).then((result) => {
         if (result.response === 0) {
             autoUpdater.quitAndInstall();
         }
-    });
+    }).catch(() => {});
 });
 
 const DISCORD_CLIENT_ID = '123456789012345678';
@@ -71,7 +109,15 @@ ipcMain.on('update-rpc', (event, data) => {
     }
 });
 
-function createWindow() {
+function launchGameWindow() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        if (launcherWindow && !launcherWindow.isDestroyed()) {
+            launcherWindow.hide();
+        }
+        return;
+    }
+
     sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
 
     mainWindow = new BrowserWindow({
@@ -99,7 +145,7 @@ function createWindow() {
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
         setTimeout(() => {
-            autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+            autoUpdater.checkForUpdates().catch(() => {});
         }, 5000);
     });
 
@@ -126,9 +172,74 @@ function createWindow() {
         }
     });
 
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
+
     mainWindow.loadURL('https://pokebonk.com');
     initDiscordRPC();
 }
+
+function createLauncherWindow() {
+    launcherWindow = new BrowserWindow({
+        width: 520,
+        height: 360,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        show: false,
+        title: 'PokéBonk Launcher',
+        backgroundColor: '#09111b',
+        autoHideMenuBar: true,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        }
+    });
+
+    launcherWindow.setMenuBarVisibility(false);
+    launcherWindow.once('ready-to-show', () => {
+        launcherWindow.show();
+        sendLauncherStatus('checking', { message: 'Checking for updates…' });
+        autoUpdater.checkForUpdates().catch(() => {});
+    });
+
+    launcherWindow.on('closed', () => {
+        launcherWindow = null;
+        if (!mainWindow) {
+            app.quit();
+        }
+    });
+
+    launcherWindow.loadFile(path.join(__dirname, 'launcher.html'));
+}
+
+ipcMain.on('launch-game', () => {
+    launchGameWindow();
+});
+
+ipcMain.on('update-game', async () => {
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        if (result && result.updateInfo && result.updateInfo.version) {
+            sendLauncherStatus('downloading', {
+                version: result.updateInfo.version,
+                message: 'Downloading update…'
+            });
+            await autoUpdater.downloadUpdate();
+        } else {
+            sendLauncherStatus('up-to-date', { message: 'You are already on the latest version.' });
+        }
+    } catch (error) {
+        sendLauncherStatus('error', {
+            message: error && error.message ? error.message : 'Unable to update right now.'
+        });
+    }
+});
+
+ipcMain.on('exit-launcher', () => {
+    app.quit();
+});
 
 ipcMain.on('minimize-app', () => {
     if (mainWindow) mainWindow.minimize();
@@ -145,7 +256,7 @@ app.on('second-instance', () => {
     }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(createLauncherWindow);
 
 app.on('window-all-closed', () => {
     if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
