@@ -25,7 +25,7 @@
     })(),
 
     defaultVersions: {
-      windows: '2.4.11',
+      windows: '2.4.13',
       android: '1.10',
       ios: '1.0.2',
       web: '2.5'
@@ -740,10 +740,11 @@
   function initDesktopTitleBar() {
     if (NativeBridge.platform !== 'windows') return;
     if (document.getElementById('pb-desktop-titlebar')) return;
+    if (!document.body) return;
 
     document.body.classList.add('pb-has-titlebar');
 
-    const initialVer = NativeBridge.defaultVersions[NativeBridge.platform] || '2.5';
+    const initialVer = NativeBridge.defaultVersions[NativeBridge.platform] || '2.4.13';
     const bar = document.createElement('div');
     bar.id = 'pb-desktop-titlebar';
     bar.innerHTML = `
@@ -764,6 +765,18 @@
         <button class="pb-tb-btn" id="pb-tb-fs-btn" title="Toggle Fullscreen (F11)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
         </button>
+        <div class="pb-tb-divider"></div>
+        <div class="pb-tb-win-controls">
+          <button class="pb-tb-win-btn pb-btn-min" id="pb-win-min" title="Minimize">
+            <svg width="10" height="10" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1.5" x="1" y="6"></rect></svg>
+          </button>
+          <button class="pb-tb-win-btn pb-btn-max" id="pb-win-max" title="Maximize">
+            <svg id="pb-win-max-icon" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><rect width="8" height="8" x="2" y="2"></rect></svg>
+          </button>
+          <button class="pb-tb-win-btn pb-btn-close" id="pb-win-close" title="Close">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="1" y1="1" x2="11" y2="11"></line><line x1="11" y1="1" x2="1" y2="11"></line></svg>
+          </button>
+        </div>
       </div>
     `;
 
@@ -797,6 +810,39 @@
       NativeBridge.toggleFullscreen();
     });
 
+    document.getElementById('pb-win-min')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && window.electronAPI.minimizeWindow) {
+        window.electronAPI.minimizeWindow();
+      }
+    });
+
+    document.getElementById('pb-win-max')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && window.electronAPI.maximizeWindow) {
+        window.electronAPI.maximizeWindow();
+      }
+    });
+
+    document.getElementById('pb-win-close')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && window.electronAPI.closeWindow) {
+        window.electronAPI.closeWindow();
+      }
+    });
+
+    window.addEventListener('pb-maximize-change', (e) => {
+      const isMax = !!(e.detail && e.detail.isMaximized);
+      const icon = document.getElementById('pb-win-max-icon');
+      if (icon) {
+        if (isMax) {
+          icon.innerHTML = `<rect width="6.5" height="6.5" x="3.5" y="1.5"></rect><rect width="6.5" height="6.5" x="1.5" y="3.5"></rect>`;
+        } else {
+          icon.innerHTML = `<rect width="8" height="8" x="2" y="2"></rect>`;
+        }
+      }
+    });
+
     window.addEventListener('pb-fullscreen-change', (e) => {
       const isFs = !!(e.detail && e.detail.isFullScreen);
       if (isFs) {
@@ -811,6 +857,14 @@
 
   // --- Startup Observers ---
   function initEngine() {
+    if (!document.body) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEngine, { once: true });
+      } else {
+        setTimeout(initEngine, 30);
+      }
+      return;
+    }
     initDesktopTitleBar();
     initHUD();
     patchSettingsMenu();

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.send('check-for-updates-manual'),
   exitApp: () => ipcRenderer.send('exit-app'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  closeWindow: () => ipcRenderer.send('window-close'),
   isDesktop: true
 });
 
@@ -21,7 +24,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const style = document.createElement('style');
       style.id = 'pb-desktop-core-theme';
       style.textContent = cssContent;
-      document.head.appendChild(style);
+      (document.head || document.documentElement).appendChild(style);
     }
   } catch (err) {
     console.error('Failed to inject core theme:', err);
@@ -35,15 +38,19 @@ window.addEventListener('DOMContentLoaded', () => {
       const script = document.createElement('script');
       script.id = 'pb-desktop-core-engine';
       script.textContent = jsContent;
-      document.head.appendChild(script);
+      (document.head || document.documentElement).appendChild(script);
     }
   } catch (err) {
     console.error('Failed to inject core engine:', err);
   }
 
-  // 2b. Fullscreen state forwarding
+  // 2b. State forwarding
   ipcRenderer.on('fullscreen-change', (event, isFs) => {
     window.dispatchEvent(new CustomEvent('pb-fullscreen-change', { detail: { isFullScreen: isFs } }));
+  });
+
+  ipcRenderer.on('maximize-change', (event, isMax) => {
+    window.dispatchEvent(new CustomEvent('pb-maximize-change', { detail: { isMaximized: isMax } }));
   });
 
   // 3. Desktop Hotkeys

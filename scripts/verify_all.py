@@ -82,7 +82,86 @@ def test_windows_integrity():
     assert 'electronAPI' in preload_js
     assert 'toggleFullscreen' in preload_js
     assert 'checkForUpdates' in preload_js
-    print("[PASS] Windows code integrity passed")
+
+    # Syntax and bracket balance checks
+    for js_path in ['windows/main.js', 'windows/preload.js', 'core/pokebonk-core.js']:
+        with open(js_path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        stack = []
+        i = 0
+        n = len(code)
+        line = 1
+        last_non_ws = None
+        while i < n:
+            c = code[i]
+            if c == '\n':
+                line += 1
+                i += 1
+                continue
+            if c.isspace():
+                i += 1
+                continue
+            if c == '/' and i + 1 < n and code[i+1] == '/':
+                i += 2
+                while i < n and code[i] != '\n':
+                    i += 1
+                continue
+            if c == '/' and i + 1 < n and code[i+1] == '*':
+                i += 2
+                while i + 1 < n and not (code[i] == '*' and code[i+1] == '/'):
+                    if code[i] == '\n': line += 1
+                    i += 1
+                i += 2
+                continue
+            # Regex literal detection: if '/' follows punctuation/operator
+            if c == '/' and last_non_ws in (None, '(', '[', '{', '=', ':', ';', ',', '!', '&', '|', '?', '~', '+', '-', '*', '%', '^', '<', '>'):
+                i += 1
+                in_class = False
+                while i < n:
+                    if code[i] == '\n':
+                        line += 1
+                        break
+                    if code[i] == '\\':
+                        i += 2
+                        continue
+                    if code[i] == '[':
+                        in_class = True
+                    elif code[i] == ']' and in_class:
+                        in_class = False
+                    elif code[i] == '/' and not in_class:
+                        i += 1
+                        while i < n and code[i].isalpha():
+                            i += 1
+                        break
+                    i += 1
+                last_non_ws = ')'
+                continue
+            if c in ('"', "'", '`'):
+                quote = c
+                i += 1
+                while i < n:
+                    if code[i] == '\n': line += 1
+                    if code[i] == '\\':
+                        i += 2
+                        continue
+                    if code[i] == quote:
+                        i += 1
+                        break
+                    i += 1
+                last_non_ws = quote
+                continue
+            if c in '({[':
+                stack.append((c, line))
+            elif c in ')}]':
+                assert stack, f"Unmatched '{c}' at line {line} in {js_path}"
+                top, top_line = stack.pop()
+                matches = {'(': ')', '{': '}', '[': ']'}
+                assert matches[top] == c, f"Mismatched '{top}' (line {top_line}) with '{c}' at line {line} in {js_path}"
+            last_non_ws = c
+            i += 1
+        assert not stack, f"Unclosed '{stack[-1][0]}' from line {stack[-1][1]} in {js_path}"
+
+    print("[PASS] Windows code integrity and JS syntax checks passed")
 
 def test_ios_integrity():
     with open('ios/PokeBonk/Resources/Info.plist', 'r', encoding='utf-8') as f:

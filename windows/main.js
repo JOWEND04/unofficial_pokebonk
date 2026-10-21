@@ -136,6 +136,13 @@ function downloadFile(url, destPath) {
 
         res.pipe(file);
 
+        res.on('error', (err) => {
+          file.close(() => {
+            try { fs.unlinkSync(destPath); } catch (_) {}
+            reject(err);
+          });
+        });
+
         file.on('finish', () => {
           file.close((err) => {
             if (err) reject(err);
@@ -173,9 +180,9 @@ async function checkWindowsUpdates(manual = false) {
     // 1. Check latest.yml directly (authoritative Windows manifest, NO API rate limits)
     try {
       const ymlText = await fetchText('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/latest.yml');
-      const match = ymlText.match(/version:\s*([0-9.]+)/i);
+      const match = ymlText.match(/version:\s*['"v]?([0-9a-zA-Z.-]+)/i);
       if (match && match[1]) {
-        remoteVersion = match[1].trim();
+        remoteVersion = match[1].replace(/['"]/g, '').trim();
       }
     } catch (_) {}
 
@@ -184,8 +191,8 @@ async function checkWindowsUpdates(manual = false) {
       try {
         const vText = await fetchText('https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest/download/version.json');
         const vJson = JSON.parse(vText);
-        if (vJson.windows && vJson.windows.version) {
-          remoteVersion = vJson.windows.version;
+        if (vJson.windows) {
+          remoteVersion = vJson.windows.version || vJson.windows.versionName || null;
         }
       } catch (_) {}
     }
@@ -379,7 +386,8 @@ try {
 } catch {}
 
 if (Test-Path -LiteralPath $TargetExe) {
-    Start-Process -FilePath $TargetExe
+    $targetDir = [System.IO.Path]::GetDirectoryName($TargetExe)
+    Start-Process -FilePath $TargetExe -WorkingDirectory $targetDir
 }
 
 try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch {}
@@ -419,11 +427,6 @@ function createMainWindow() {
     backgroundColor: '#0e0a20',
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: 'transparent',
-      symbolColor: '#ffcc33',
-      height: 38
-    },
     title: 'PokéBonk',
     icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
@@ -440,6 +443,25 @@ function createMainWindow() {
     if (!sleepBlockerId) {
       sleepBlockerId = powerSaveBlocker.start('prevent-display-sleep');
     }
+  });
+
+  // Inject Core Styles and Script on dom-ready to guarantee 100% presence
+  mainWindow.webContents.on('dom-ready', () => {
+    try {
+      const cssPath = path.join(__dirname, 'core', 'pokebonk-theme.css');
+      if (fs.existsSync(cssPath)) {
+        const css = fs.readFileSync(cssPath, 'utf8');
+        mainWindow.webContents.insertCSS(css).catch(() => {});
+      }
+    } catch (_) {}
+
+    try {
+      const jsPath = path.join(__dirname, 'core', 'pokebonk-core.js');
+      if (fs.existsSync(jsPath)) {
+        const js = fs.readFileSync(jsPath, 'utf8');
+        mainWindow.webContents.executeJavaScript(js).catch(() => {});
+      }
+    } catch (_) {}
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -469,6 +491,18 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('maximize-change', true);
+    }
+  });
+
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('maximize-change', false);
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -482,6 +516,28 @@ function createMainWindow() {
 }
 
 // IPC Handlers
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
 ipcMain.on('toggle-fullscreen', () => {
   if (mainWindow) {
     mainWindow.setFullScreen(!mainWindow.isFullScreen());
