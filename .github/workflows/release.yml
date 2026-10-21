@@ -3,13 +3,6 @@ name: Automated Build & Release
 on:
   push:
     branches: [ "main", "master" ]
-    paths:
-      - 'android/**'
-      - 'windows/**'
-      - 'ios/**'
-      - 'core/**'
-      - 'scripts/**'
-      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       target:
@@ -163,9 +156,14 @@ jobs:
             if ! git diff --cached --quiet; then
               COMMIT_TEXT="chore(release): auto-bump version ($TARGET $BUMP_TYPE) [skip ci]"
               git commit -m "$COMMIT_TEXT"
-              git push origin HEAD:${{ github.ref_name }}
+              echo "Pushing version bump commit to ${{ github.ref_name }}..."
+              if ! git push origin HEAD:${{ github.ref_name }}; then
+                echo "Non-fast-forward push detected. Pulling with rebase..."
+                git pull --rebase origin ${{ github.ref_name }} || true
+                git push origin HEAD:${{ github.ref_name }} || git push --force-with-lease origin HEAD:${{ github.ref_name }} || echo "Warning: Could not push version bump commit. Proceeding with build."
+              fi
               NEW_SHA=$(git rev-parse HEAD)
-              echo "Committed and pushed new version: $NEW_SHA"
+              echo "Final build commit: $NEW_SHA"
             else
               echo "No version files changed."
               NEW_SHA=${{ github.sha }}
