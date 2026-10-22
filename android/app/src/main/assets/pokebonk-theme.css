@@ -50,7 +50,7 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  cursor: pointer;
+  cursor: default;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -62,13 +62,7 @@
   opacity: 1;
   color: #ffffff;
   background: rgba(26, 22, 48, 0.98);
-  border-color: var(--pb-red);
-  box-shadow: 0 4px 16px rgba(233, 71, 86, 0.3);
-  transform: translateY(-1px);
-}
-
-.pb-topleft-version:active {
-  transform: scale(0.96);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .pb-ver-dot {
@@ -552,14 +546,14 @@ button[aria-label*="Fullscreen" i] {
   background: rgba(255, 255, 255, 0.07);
   color: var(--pb-text-dim);
   border: 1px solid var(--pb-border);
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s ease;
   -webkit-app-region: no-drag;
 }
 
 .pb-tb-version:hover {
-  background: var(--pb-red-dim);
-  border-color: var(--pb-red);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
   color: #ffffff;
 }
 

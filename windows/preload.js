@@ -16,6 +16,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+  // 0. Load Controller Settings from Dedicated Launcher
+  function syncLauncherControllerSettings() {
+    try {
+      const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
+      const controllerSettingsPath = path.join(localAppData, 'PokeBonk', 'controller_settings.json');
+      if (fs.existsSync(controllerSettingsPath)) {
+        const raw = fs.readFileSync(controllerSettingsPath, 'utf8');
+        const settings = JSON.parse(raw);
+        if (settings && typeof settings.stick_sensitivity === 'number') {
+          localStorage.setItem('pb_stick_sensitivity', String(settings.stick_sensitivity));
+        }
+        if (settings && typeof settings.swap_abxy === 'boolean') {
+          localStorage.setItem('pb_swap_abxy', String(settings.swap_abxy));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load launcher controller settings:', err);
+    }
+  }
+  syncLauncherControllerSettings();
+
+  function saveLauncherControllerSettings() {
+    try {
+      const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
+      const controllerSettingsPath = path.join(localAppData, 'PokeBonk', 'controller_settings.json');
+      const sens = parseFloat(localStorage.getItem('pb_stick_sensitivity') || '1.0');
+      const swapped = localStorage.getItem('pb_swap_abxy') === 'true';
+      const data = {
+        stick_sensitivity: isNaN(sens) ? 1.0 : sens,
+        swap_abxy: swapped,
+        updatedAt: new Date().toISOString()
+      };
+      fs.writeFileSync(controllerSettingsPath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (_) {}
+  }
+
   // 1. Inject Core CSS
   try {
     const cssPath = path.join(__dirname, 'core', 'pokebonk-theme.css');
@@ -68,6 +104,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const current = parseFloat(localStorage.getItem('pb_stick_sensitivity') || '1.0');
       const next = current >= 2.0 ? 0.5 : Math.round((current + 0.25) * 100) / 100;
       localStorage.setItem('pb_stick_sensitivity', String(next));
+      saveLauncherControllerSettings();
       window.dispatchEvent(new Event('storage'));
       return;
     }
@@ -77,6 +114,7 @@ window.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       const next = localStorage.getItem('pb_swap_abxy') !== 'true';
       localStorage.setItem('pb_swap_abxy', String(next));
+      saveLauncherControllerSettings();
       window.dispatchEvent(new Event('storage'));
       return;
     }

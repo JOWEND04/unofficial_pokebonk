@@ -371,7 +371,7 @@
       toast.id = 'pb-core-toast';
       document.body.appendChild(toast);
     }
-    toast.innerHTML = `<span style="font-size:14px;">⚡</span><span>${message}</span>`;
+    toast.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg><span>${message}</span>`;
     toast.classList.add('visible');
     clearTimeout(toast.__timer);
     toast.__timer = setTimeout(() => {
@@ -469,17 +469,12 @@
     const verPill = document.createElement('div');
     verPill.id = 'pb-topleft-version';
     verPill.className = 'pb-topleft-version';
-    verPill.title = 'PokéBonk Version (Click to check updates)';
+    verPill.title = 'PokéBonk Version';
     const initialVer = NativeBridge.defaultVersions[NativeBridge.platform] || '2.5';
     verPill.innerHTML = `
       <span class="pb-ver-dot"></span>
       <span id="pb-topleft-version-text">v${initialVer}</span>
     `;
-
-    verPill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      NativeBridge.checkForUpdates();
-    });
 
     triggerRow.appendChild(toggleBtn);
     triggerRow.appendChild(verPill);
@@ -567,74 +562,16 @@
       }
     });
 
-    // 2. Gamepad Live Status Bar
-    const padBar = document.createElement('div');
-    padBar.className = 'pb-gamepad-bar';
-    padBar.innerHTML = `
-      <span id="pb-pad-dot" class="pb-status-dot"></span>
-      <span id="pb-pad-text">No Gamepad Detected</span>
-    `;
-    menu.appendChild(padBar);
-
-    // 3. Controller Layout Toggle
-    const layoutBtn = document.createElement('button');
-    layoutBtn.className = 'pb-menu-btn';
-    layoutBtn.innerHTML = `
-      <div class="pb-btn-content">
-        <span>🎮</span>
-        <span>Controller Layout</span>
-      </div>
-      <span id="pb-menu-pill-layout" class="pb-btn-pill">Xbox</span>
-    `;
-    layoutBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setLayoutSwapped(!isLayoutSwapped());
-    });
-    menu.appendChild(layoutBtn);
-
-    // 4. Stick Sensitivity Slider Box
-    const sensBox = document.createElement('div');
-    sensBox.className = 'pb-section-box';
-    sensBox.innerHTML = `
-      <div class="pb-row-label">
-        <span>🎯 Stick Sensitivity</span>
-        <span id="pb-sens-value" class="pb-row-value">100%</span>
-      </div>
-      <input type="range" id="pb-sens-slider" class="pb-range-slider" min="0.5" max="2.0" step="0.05" value="1.0">
-      <div class="pb-presets-row">
-        <button class="pb-preset-btn" data-val="0.5">50%</button>
-        <button class="pb-preset-btn" data-val="0.75">75%</button>
-        <button class="pb-preset-btn active" data-val="1.0">100%</button>
-        <button class="pb-preset-btn" data-val="1.5">150%</button>
-        <button class="pb-preset-btn" data-val="2.0">200%</button>
-      </div>
-    `;
-
-    const slider = sensBox.querySelector('#pb-sens-slider');
-    slider.addEventListener('input', (e) => {
-      e.stopPropagation();
-      setStickSensitivity(parseFloat(slider.value));
-    });
-
-    sensBox.querySelectorAll('.pb-preset-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setStickSensitivity(parseFloat(btn.dataset.val));
-      });
-    });
-
-    menu.appendChild(sensBox);
-
-    // 5. Fullscreen Toggle (Windows / Web)
+    // 2. Fullscreen Toggle (Windows / Web)
     if (NativeBridge.platform === 'windows' || NativeBridge.platform === 'web') {
       const fsBtn = document.createElement('button');
       fsBtn.className = 'pb-menu-btn';
       fsBtn.innerHTML = `
         <div class="pb-btn-content">
-          <span>⛶</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
           <span>Toggle Fullscreen</span>
         </div>
-        <span style="font-size:10px;color:#94a3b8;">F11</span>
+        <span style="font-size:10px;color:#94a3b8;font-weight:600;">F11</span>
       `;
       fsBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -643,12 +580,12 @@
       menu.appendChild(fsBtn);
     }
 
-    // 6. Reload Game Button
+    // 3. Reload Game Button
     const reloadBtn = document.createElement('button');
     reloadBtn.className = 'pb-menu-btn';
     reloadBtn.innerHTML = `
       <div class="pb-btn-content">
-        <span>🔄</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
         <span>Reload Game</span>
       </div>
     `;
@@ -659,26 +596,15 @@
     });
     menu.appendChild(reloadBtn);
 
-    // 7. Check for Updates Button
-    const updateBtn = document.createElement('button');
-    updateBtn.className = 'pb-menu-btn';
-    updateBtn.innerHTML = `
-      <div class="pb-btn-content">
-        <span>⬆</span>
-        <span>Check for Updates</span>
-      </div>
-    `;
-    updateBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu(false);
-      NativeBridge.checkForUpdates();
-    });
-    menu.appendChild(updateBtn);
-
-    // 8. Close Button
+    // 4. Close Button
     const closeBtn = document.createElement('button');
     closeBtn.className = 'pb-menu-btn pb-menu-btn-close';
-    closeBtn.textContent = '✕ Close Menu';
+    closeBtn.innerHTML = `
+      <div class="pb-btn-content" style="justify-content:center;gap:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <span>Close Menu</span>
+      </div>
+    `;
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleMenu(false);
@@ -751,7 +677,7 @@
       <div class="pb-tb-left">
         <span class="pb-pokeball-icon"></span>
         <span class="pb-tb-title">POKÉBONK</span>
-        <span id="pb-tb-version" class="pb-tb-version" title="PokéBonk Desktop Version (Click to check updates)">v${initialVer}</span>
+        <span id="pb-tb-version" class="pb-tb-version" title="PokéBonk Desktop Version">v${initialVer}</span>
       </div>
       <div class="pb-tb-drag-area"></div>
       <div class="pb-tb-right">
@@ -769,11 +695,6 @@
     `;
 
     document.body.prepend(bar);
-
-    document.getElementById('pb-tb-version')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      NativeBridge.checkForUpdates();
-    });
 
     NativeBridge.getAppVersion((ver) => {
       const vEl = document.getElementById('pb-tb-version');

@@ -27,6 +27,12 @@ namespace PokeBonk.Launcher
         Error
     }
 
+    public enum LauncherTab
+    {
+        Game,
+        ControllerSettings
+    }
+
     public class LauncherForm : Form
     {
         // P/Invoke for borderless window dragging, shadow, and window activation
@@ -38,6 +44,67 @@ namespace PokeBonk.Launcher
         public static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        // Win32 XInput Gamepad Interop for live controller detection
+        [StructLayout(LayoutKind.Sequential)]
+        public struct XINPUT_GAMEPAD
+        {
+            public ushort wButtons;
+            public byte bLeftTrigger;
+            public byte bRightTrigger;
+            public short sThumbLX;
+            public short sThumbLY;
+            public short sThumbRX;
+            public short sThumbRY;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct XINPUT_STATE
+        {
+            public uint dwPacketNumber;
+            public XINPUT_GAMEPAD Gamepad;
+        }
+
+        [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
+        private static extern int XInputGetState14(int dwUserIndex, ref XINPUT_STATE pState);
+
+        [DllImport("xinput1_3.dll", EntryPoint = "XInputGetState")]
+        private static extern int XInputGetState13(int dwUserIndex, ref XINPUT_STATE pState);
+
+        [DllImport("xinput9_1_0.dll", EntryPoint = "XInputGetState")]
+        private static extern int XInputGetState910(int dwUserIndex, ref XINPUT_STATE pState);
+
+        private bool IsControllerConnected()
+        {
+            try
+            {
+                XINPUT_STATE state = new XINPUT_STATE();
+                for (int i = 0; i < 4; i++)
+                {
+                    try
+                    {
+                        if (XInputGetState14(i, ref state) == 0) return true;
+                    }
+                    catch (DllNotFoundException)
+                    {
+                        try
+                        {
+                            if (XInputGetState13(i, ref state) == 0) return true;
+                        }
+                        catch (DllNotFoundException)
+                        {
+                            try
+                            {
+                                if (XInputGetState910(i, ref state) == 0) return true;
+                            }
+                            catch {}
+                        }
+                    }
+                }
+            }
+            catch {}
+            return false;
+        }
 
         private const int WM_NCLBUTTONDOWN = 0xA1;
         private const int HT_CAPTION = 0x2;
@@ -69,6 +136,15 @@ namespace PokeBonk.Launcher
         private readonly string versionJsonPath;
         private readonly string tempExePath;
         private readonly string settingsJsonPath;
+        private readonly string controllerSettingsPath;
+
+        // Navigation state
+        private LauncherTab currentTab = LauncherTab.Game;
+
+        // Controller Settings state
+        private double stickSensitivity = 1.0;
+        private bool swapAbxy = false;
+        private bool isDraggingSensitivity = false;
 
         // State variables
         private LauncherState currentState = LauncherState.Checking;
@@ -99,10 +175,28 @@ namespace PokeBonk.Launcher
         private bool hoverLinkDiscord = false;
         private bool hoverCheckAutoClose = false;
 
+        // Tabs & Controller Settings Hover States
+        private bool hoverTabGame = false;
+        private bool hoverTabController = false;
+        private bool hoverPreset50 = false;
+        private bool hoverPreset75 = false;
+        private bool hoverPreset100 = false;
+        private bool hoverPreset150 = false;
+        private bool hoverPreset200 = false;
+        private bool hoverLayoutXbox = false;
+        private bool hoverLayoutSwitch = false;
+        private bool hoverBtnResetController = false;
+
         // Hit-test rectangles
         private readonly Rectangle rectTitleBar = new Rectangle(0, 0, 920, 44);
         private readonly Rectangle rectBtnMinimize = new Rectangle(920 - 76, 7, 32, 30);
         private readonly Rectangle rectBtnClose = new Rectangle(920 - 40, 7, 32, 30);
+
+        // Header Navigation Tabs
+        private readonly Rectangle rectTabGame = new Rectangle(236, 8, 86, 28);
+        private readonly Rectangle rectTabController = new Rectangle(328, 8, 160, 28);
+
+        // Game Tab Rectangles
         private readonly Rectangle rectMainAction = new Rectangle(585, 248, 295, 60);
         private readonly Rectangle rectBtnFolder = new Rectangle(585, 324, 142, 36);
         private readonly Rectangle rectBtnRepair = new Rectangle(738, 324, 142, 36);
@@ -113,6 +207,17 @@ namespace PokeBonk.Launcher
         private readonly Rectangle rectLinkGitHub = new Rectangle(170, 480, 130, 26);
         private readonly Rectangle rectLinkDiscord = new Rectangle(315, 480, 150, 26);
 
+        // Controller Settings Tab Rectangles
+        private readonly Rectangle rectSensSlider = new Rectangle(54, 260, 376, 10);
+        private readonly Rectangle rectPreset50 = new Rectangle(54, 324, 68, 30);
+        private readonly Rectangle rectPreset75 = new Rectangle(131, 324, 68, 30);
+        private readonly Rectangle rectPreset100 = new Rectangle(208, 324, 68, 30);
+        private readonly Rectangle rectPreset150 = new Rectangle(285, 324, 68, 30);
+        private readonly Rectangle rectPreset200 = new Rectangle(362, 324, 68, 30);
+        private readonly Rectangle rectLayoutXbox = new Rectangle(490, 256, 374, 62);
+        private readonly Rectangle rectLayoutSwitch = new Rectangle(490, 328, 374, 62);
+        private readonly Rectangle rectBtnResetController = new Rectangle(734, 474, 150, 34);
+
         public LauncherForm()
         {
             // Initialize paths in %LOCALAPPDATA%\PokeBonk\
@@ -122,6 +227,7 @@ namespace PokeBonk.Launcher
             versionJsonPath = Path.Combine(gameDir, "version.json");
             tempExePath = Path.Combine(gameDir, "PokeBonk.exe.tmp");
             settingsJsonPath = Path.Combine(localAppDataDir, "launcher_settings.json");
+            controllerSettingsPath = Path.Combine(localAppDataDir, "controller_settings.json");
 
             // Form properties
             this.FormBorderStyle = FormBorderStyle.None;
@@ -149,6 +255,7 @@ namespace PokeBonk.Launcher
             catch {}
 
             LoadSettings();
+            LoadControllerSettings();
             RegisterSelf();
 
             // Setup TLS 1.2 for secure GitHub connectivity
@@ -215,6 +322,47 @@ namespace PokeBonk.Launcher
                 };
                 var serializer = new JavaScriptSerializer();
                 File.WriteAllText(settingsJsonPath, serializer.Serialize(dict));
+            }
+            catch {}
+        }
+
+        private void LoadControllerSettings()
+        {
+            try
+            {
+                if (File.Exists(controllerSettingsPath))
+                {
+                    string json = File.ReadAllText(controllerSettingsPath);
+                    var serializer = new JavaScriptSerializer();
+                    var dict = serializer.Deserialize<System.Collections.Generic.Dictionary<string, object>>(json);
+                    if (dict != null)
+                    {
+                        if (dict.ContainsKey("stick_sensitivity"))
+                        {
+                            stickSensitivity = Math.Max(0.5, Math.Min(2.0, Convert.ToDouble(dict["stick_sensitivity"])));
+                        }
+                        if (dict.ContainsKey("swap_abxy"))
+                        {
+                            swapAbxy = Convert.ToBoolean(dict["swap_abxy"]);
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private void SaveControllerSettings()
+        {
+            try
+            {
+                var dict = new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "stick_sensitivity", Math.Round(stickSensitivity, 2) },
+                    { "swap_abxy", swapAbxy },
+                    { "updatedAt", DateTime.UtcNow.ToString("o") }
+                };
+                var serializer = new JavaScriptSerializer();
+                File.WriteAllText(controllerSettingsPath, serializer.Serialize(dict));
             }
             catch {}
         }
@@ -839,11 +987,18 @@ namespace PokeBonk.Launcher
             // 2. Draw Header Bar
             DrawHeader(g);
 
-            // 3. Draw Hero Showcase (Left Side)
-            DrawHeroPanel(g);
+            if (currentTab == LauncherTab.Game)
+            {
+                // 3. Draw Hero Showcase (Left Side)
+                DrawHeroPanel(g);
 
-            // 4. Draw Action & Status Dock (Right Side)
-            DrawActionDock(g);
+                // 4. Draw Action & Status Dock (Right Side)
+                DrawActionDock(g);
+            }
+            else
+            {
+                DrawControllerSettingsTab(g);
+            }
         }
 
         private void DrawHeader(Graphics g)
@@ -884,6 +1039,53 @@ namespace PokeBonk.Launcher
             {
                 var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString("LAUNCHER", font, brush, rectBadge, sf);
+            }
+
+            // Navigation Tabs (GAME / CONTROLLER SETTINGS)
+            bool isGameActive = (currentTab == LauncherTab.Game);
+            if (isGameActive || hoverTabGame)
+            {
+                using (var brush = new SolidBrush(isGameActive ? Color.FromArgb(45, 39, 76) : ColorButtonSecHover))
+                using (var path = GetRoundedRectangle(rectTabGame, 6))
+                {
+                    g.FillPath(brush, path);
+                }
+            }
+            if (isGameActive)
+            {
+                using (var brush = new SolidBrush(ColorRed))
+                {
+                    g.FillRectangle(brush, rectTabGame.X + 16, rectTabGame.Bottom - 3, rectTabGame.Width - 32, 2);
+                }
+            }
+            using (var font = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            using (var brush = new SolidBrush(isGameActive ? ColorTextWhite : ColorTextMuted))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString("GAME", font, brush, rectTabGame, sf);
+            }
+
+            bool isCtrlActive = (currentTab == LauncherTab.ControllerSettings);
+            if (isCtrlActive || hoverTabController)
+            {
+                using (var brush = new SolidBrush(isCtrlActive ? Color.FromArgb(45, 39, 76) : ColorButtonSecHover))
+                using (var path = GetRoundedRectangle(rectTabController, 6))
+                {
+                    g.FillPath(brush, path);
+                }
+            }
+            if (isCtrlActive)
+            {
+                using (var brush = new SolidBrush(ColorRed))
+                {
+                    g.FillRectangle(brush, rectTabController.X + 20, rectTabController.Bottom - 3, rectTabController.Width - 40, 2);
+                }
+            }
+            using (var font = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            using (var brush = new SolidBrush(isCtrlActive ? ColorTextWhite : ColorTextMuted))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString("CONTROLLER SETTINGS", font, brush, rectTabController, sf);
             }
 
             // Minimize Button
@@ -1149,6 +1351,229 @@ namespace PokeBonk.Launcher
             }
         }
 
+        private void DrawControllerSettingsTab(Graphics g)
+        {
+            // Title Header
+            using (var font = new Font("Segoe UI", 20.0f, FontStyle.Bold))
+            using (var brush = new SolidBrush(ColorTextWhite))
+            {
+                g.DrawString("CONTROLLER SETTINGS", font, brush, 36, 68);
+            }
+
+            // Accent stripe
+            using (var brush = new SolidBrush(ColorRed))
+            {
+                g.FillRectangle(brush, 38, 102, 48, 3);
+            }
+
+            // Subtitle
+            using (var font = new Font("Segoe UI", 9.5f, FontStyle.Regular))
+            using (var brush = new SolidBrush(ColorTextMuted))
+            {
+                g.DrawString("Customize analog stick sensitivity scaling and switch between Xbox and Nintendo Switch button layouts.", font, brush, 36, 110);
+            }
+
+            // Gamepad Status Banner
+            var rectPadBanner = new Rectangle(36, 134, 848, 44);
+            using (var path = GetRoundedRectangle(rectPadBanner, 6))
+            using (var brush = new SolidBrush(ColorCard))
+            using (var pen = new Pen(ColorCardBorder, 1))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+
+            bool padConnected = IsControllerConnected();
+            Color dotColor = padConnected ? ColorSuccess : ColorTranslator.FromHtml("#64748b");
+            using (var brush = new SolidBrush(dotColor))
+            {
+                g.FillEllipse(brush, 52, 151, 10, 10);
+            }
+
+            using (var fontBold = new Font("Segoe UI", 9.5f, FontStyle.Bold))
+            using (var fontSub = new Font("Segoe UI", 8.5f, FontStyle.Regular))
+            using (var brushWhite = new SolidBrush(ColorTextWhite))
+            using (var brushMuted = new SolidBrush(ColorTextMuted))
+            {
+                if (padConnected)
+                {
+                    g.DrawString("Gamepad Status: Connected (XInput Controller)", fontBold, brushWhite, 72, 140);
+                    g.DrawString("Standard controller active • Custom sensitivity and layout mapping enabled", fontSub, brushMuted, 72, 157);
+                }
+                else
+                {
+                    g.DrawString("Gamepad Status: No Controller Detected", fontBold, brushWhite, 72, 140);
+                    g.DrawString("Connect an Xbox, PlayStation, or Switch Pro controller via USB or Bluetooth • Hotplug supported", fontSub, brushMuted, 72, 157);
+                }
+            }
+
+            // ================= LEFT CARD: STICK SENSITIVITY =================
+            var rectCardSens = new Rectangle(36, 190, 414, 276);
+            using (var path = GetRoundedRectangle(rectCardSens, 8))
+            using (var brush = new SolidBrush(ColorCard))
+            using (var pen = new Pen(ColorCardBorder, 1))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+
+            using (var fontTitle = new Font("Segoe UI", 11.0f, FontStyle.Bold))
+            using (var fontValue = new Font("Segoe UI", 13.0f, FontStyle.Bold))
+            using (var fontDesc = new Font("Segoe UI", 8.5f, FontStyle.Regular))
+            using (var fontMini = new Font("Segoe UI", 8.0f, FontStyle.Regular))
+            using (var brushWhite = new SolidBrush(ColorTextWhite))
+            using (var brushRed = new SolidBrush(ColorRed))
+            using (var brushMuted = new SolidBrush(ColorTextMuted))
+            {
+                g.DrawString("STICK SENSITIVITY", fontTitle, brushWhite, 54, 206);
+                string valStr = string.Format("{0}% ({1:0.00}x)", (int)Math.Round(stickSensitivity * 100), stickSensitivity);
+                var sfRight = new StringFormat { Alignment = StringAlignment.Far };
+                g.DrawString(valStr, fontValue, brushRed, new Rectangle(200, 204, 230, 24), sfRight);
+
+                g.DrawString("Adjusts movement responsiveness and analog deadzone curve.", fontDesc, brushMuted, 54, 232);
+
+                // Slider Track
+                using (var path = GetRoundedRectangle(rectSensSlider, 5))
+                using (var brush = new SolidBrush(Color.FromArgb(40, 255, 255, 255)))
+                {
+                    g.FillPath(brush, path);
+                }
+
+                // Slider Progress Fill
+                double pct = Math.Max(0.0, Math.Min(1.0, (stickSensitivity - 0.5) / 1.5));
+                int fillW = Math.Max(8, (int)(rectSensSlider.Width * pct));
+                var rectFill = new Rectangle(rectSensSlider.X, rectSensSlider.Y, fillW, rectSensSlider.Height);
+                using (var path = GetRoundedRectangle(rectFill, 5))
+                using (var brush = new LinearGradientBrush(rectSensSlider, ColorRed, ColorRedHover, 0f))
+                {
+                    g.FillPath(brush, path);
+                }
+
+                // Slider Knob
+                int knobX = rectSensSlider.X + (int)(rectSensSlider.Width * pct);
+                int knobY = rectSensSlider.Y + rectSensSlider.Height / 2;
+                using (var brush = new SolidBrush(Color.White))
+                using (var pen = new Pen(ColorRed, 2f))
+                {
+                    g.FillEllipse(brush, knobX - 8, knobY - 8, 16, 16);
+                    g.DrawEllipse(pen, knobX - 8, knobY - 8, 16, 16);
+                }
+
+                // Track Labels
+                g.DrawString("50% (Slower)", fontMini, brushMuted, 54, 276);
+                g.DrawString("200% (Faster)", fontMini, brushMuted, new Rectangle(250, 276, 180, 16), sfRight);
+
+                // Preset Buttons
+                g.DrawString("Quick Presets:", fontTitle, brushWhite, 54, 302);
+                DrawPresetChip(g, rectPreset50, "50%", Math.Abs(stickSensitivity - 0.50) < 0.04, hoverPreset50);
+                DrawPresetChip(g, rectPreset75, "75%", Math.Abs(stickSensitivity - 0.75) < 0.04, hoverPreset75);
+                DrawPresetChip(g, rectPreset100, "100%", Math.Abs(stickSensitivity - 1.00) < 0.04, hoverPreset100);
+                DrawPresetChip(g, rectPreset150, "150%", Math.Abs(stickSensitivity - 1.50) < 0.04, hoverPreset150);
+                DrawPresetChip(g, rectPreset200, "200%", Math.Abs(stickSensitivity - 2.00) < 0.04, hoverPreset200);
+
+                // Tip
+                g.DrawString("In-game shortcut: Press F8 anytime to cycle sensitivity.", fontMini, brushMuted, 54, 428);
+            }
+
+            // ================= RIGHT CARD: BUTTON MAPPING LAYOUT =================
+            var rectCardLayout = new Rectangle(470, 190, 414, 276);
+            using (var path = GetRoundedRectangle(rectCardLayout, 8))
+            using (var brush = new SolidBrush(ColorCard))
+            using (var pen = new Pen(ColorCardBorder, 1))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+
+            using (var fontTitle = new Font("Segoe UI", 11.0f, FontStyle.Bold))
+            using (var fontDesc = new Font("Segoe UI", 8.5f, FontStyle.Regular))
+            using (var fontMini = new Font("Segoe UI", 8.0f, FontStyle.Regular))
+            using (var brushWhite = new SolidBrush(ColorTextWhite))
+            using (var brushMuted = new SolidBrush(ColorTextMuted))
+            {
+                g.DrawString("BUTTON MAPPING LAYOUT", fontTitle, brushWhite, 490, 206);
+                g.DrawString("Switch between standard Xbox layout and Nintendo Switch layout.", fontDesc, brushMuted, 490, 232);
+
+                // Layout Option 1: Standard (Xbox / PC)
+                DrawLayoutCard(g, rectLayoutXbox, "Standard (Xbox / PC)", "South = A (Confirm) • East = B (Cancel)", !swapAbxy, hoverLayoutXbox);
+
+                // Layout Option 2: Inverted (Nintendo Switch)
+                DrawLayoutCard(g, rectLayoutSwitch, "Inverted (Nintendo Switch)", "East = A (Confirm) • South = B (Cancel)", swapAbxy, hoverLayoutSwitch);
+
+                // Tip
+                g.DrawString("In-game shortcut: Press F9 to toggle layout • Hold Back + Start to exit.", fontMini, brushMuted, 490, 428);
+            }
+
+            // ================= BOTTOM ACTIONS =================
+            using (var fontDesc = new Font("Segoe UI", 8.5f, FontStyle.Regular))
+            using (var brushMuted = new SolidBrush(ColorTextMuted))
+            {
+                g.DrawString("Settings automatically saved to controller_settings.json", fontDesc, brushMuted, 36, 482);
+            }
+
+            DrawSecondaryButton(g, rectBtnResetController, "Reset Defaults", hoverBtnResetController);
+        }
+
+        private void DrawPresetChip(Graphics g, Rectangle rect, string text, bool isActive, bool isHover)
+        {
+            Color bg = isActive ? ColorRed : (isHover ? ColorButtonSecHover : ColorButtonSec);
+            Color border = isActive ? ColorRedHover : ColorCardBorder;
+            Color textCol = isActive ? ColorTextWhite : (isHover ? ColorTextWhite : ColorTextMuted);
+
+            using (var path = GetRoundedRectangle(rect, 5))
+            using (var brush = new SolidBrush(bg))
+            using (var pen = new Pen(border, 1))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+            using (var font = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            using (var brush = new SolidBrush(textCol))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(text, font, brush, rect, sf);
+            }
+        }
+
+        private void DrawLayoutCard(Graphics g, Rectangle rect, string title, string subtitle, bool isActive, bool isHover)
+        {
+            Color bg = isActive ? Color.FromArgb(45, 30, 52) : (isHover ? ColorButtonSecHover : ColorButtonSec);
+            Color border = isActive ? ColorRed : (isHover ? Color.FromArgb(70, 255, 255, 255) : ColorCardBorder);
+
+            using (var path = GetRoundedRectangle(rect, 6))
+            using (var brush = new SolidBrush(bg))
+            using (var pen = new Pen(border, isActive ? 1.5f : 1.0f))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+
+            using (var fontTitle = new Font("Segoe UI", 9.5f, FontStyle.Bold))
+            using (var fontSub = new Font("Segoe UI", 8.0f, FontStyle.Regular))
+            using (var brushWhite = new SolidBrush(ColorTextWhite))
+            using (var brushMuted = new SolidBrush(ColorTextMuted))
+            {
+                g.DrawString(title, fontTitle, brushWhite, rect.X + 16, rect.Y + 12);
+                g.DrawString(subtitle, fontSub, brushMuted, rect.X + 16, rect.Y + 34);
+            }
+
+            if (isActive)
+            {
+                var rectBadge = new Rectangle(rect.Right - 76, rect.Y + 18, 60, 24);
+                using (var path = GetRoundedRectangle(rectBadge, 12))
+                using (var brush = new SolidBrush(ColorRed))
+                {
+                    g.FillPath(brush, path);
+                }
+                using (var font = new Font("Segoe UI", 7.5f, FontStyle.Bold))
+                using (var brush = new SolidBrush(ColorTextWhite))
+                {
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    g.DrawString("ACTIVE", font, brush, rectBadge, sf);
+                }
+            }
+        }
+
         private void DrawFeaturePill(Graphics g, int x, int y, string label)
         {
             var rect = new Rectangle(x, y, 140, 26);
@@ -1306,6 +1731,97 @@ namespace PokeBonk.Launcher
                 return;
             }
 
+            // Navigation Tabs
+            if (e.Button == MouseButtons.Left && rectTabGame.Contains(e.Location))
+            {
+                currentTab = LauncherTab.Game;
+                this.Invalidate();
+                return;
+            }
+            if (e.Button == MouseButtons.Left && rectTabController.Contains(e.Location))
+            {
+                currentTab = LauncherTab.ControllerSettings;
+                this.Invalidate();
+                return;
+            }
+
+            // Controller Settings Tab Interactions
+            if (currentTab == LauncherTab.ControllerSettings)
+            {
+                var sliderHitBox = new Rectangle(rectSensSlider.X - 8, rectSensSlider.Y - 10, rectSensSlider.Width + 16, rectSensSlider.Height + 20);
+                if (e.Button == MouseButtons.Left && sliderHitBox.Contains(e.Location))
+                {
+                    isDraggingSensitivity = true;
+                    double pct = Math.Max(0.0, Math.Min(1.0, (double)(e.X - rectSensSlider.X) / rectSensSlider.Width));
+                    stickSensitivity = Math.Round((0.5 + pct * 1.5) * 20.0) / 20.0;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+
+                if (e.Button == MouseButtons.Left && rectPreset50.Contains(e.Location))
+                {
+                    stickSensitivity = 0.50;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+                if (e.Button == MouseButtons.Left && rectPreset75.Contains(e.Location))
+                {
+                    stickSensitivity = 0.75;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+                if (e.Button == MouseButtons.Left && rectPreset100.Contains(e.Location))
+                {
+                    stickSensitivity = 1.00;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+                if (e.Button == MouseButtons.Left && rectPreset150.Contains(e.Location))
+                {
+                    stickSensitivity = 1.50;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+                if (e.Button == MouseButtons.Left && rectPreset200.Contains(e.Location))
+                {
+                    stickSensitivity = 2.00;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+
+                if (e.Button == MouseButtons.Left && rectLayoutXbox.Contains(e.Location))
+                {
+                    swapAbxy = false;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+                if (e.Button == MouseButtons.Left && rectLayoutSwitch.Contains(e.Location))
+                {
+                    swapAbxy = true;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+
+                if (e.Button == MouseButtons.Left && rectBtnResetController.Contains(e.Location))
+                {
+                    stickSensitivity = 1.00;
+                    swapAbxy = false;
+                    SaveControllerSettings();
+                    this.Invalidate();
+                    return;
+                }
+
+                return;
+            }
+
             // Main Action Button
             if (e.Button == MouseButtons.Left && rectMainAction.Contains(e.Location))
             {
@@ -1398,20 +1914,44 @@ namespace PokeBonk.Launcher
             base.OnMouseMove(e);
             Point p = e.Location;
 
+            if (currentTab == LauncherTab.ControllerSettings && isDraggingSensitivity && e.Button == MouseButtons.Left)
+            {
+                double pct = Math.Max(0.0, Math.Min(1.0, (double)(e.X - rectSensSlider.X) / rectSensSlider.Width));
+                stickSensitivity = Math.Round((0.5 + pct * 1.5) * 20.0) / 20.0;
+                this.Invalidate();
+            }
+
             bool newHoverMin = rectBtnMinimize.Contains(p);
             bool newHoverClose = rectBtnClose.Contains(p);
-            bool newHoverMain = rectMainAction.Contains(p);
-            bool newHoverFolder = rectBtnFolder.Contains(p);
-            bool newHoverRepair = rectBtnRepair.Contains(p);
-            bool newHoverCheck = rectBtnCheckUpdates.Contains(p);
-            bool newHoverUninstall = rectBtnUninstall.Contains(p);
-            bool newHoverAutoClose = rectAutoClose.Contains(p);
-            bool newHoverWeb = rectLinkWeb.Contains(p);
-            bool newHoverGitHub = rectLinkGitHub.Contains(p);
-            bool newHoverDiscord = rectLinkDiscord.Contains(p);
+            bool newHoverTabGame = rectTabGame.Contains(p);
+            bool newHoverTabCtrl = rectTabController.Contains(p);
+
+            // Game Tab Hovers
+            bool newHoverMain = (currentTab == LauncherTab.Game) && rectMainAction.Contains(p);
+            bool newHoverFolder = (currentTab == LauncherTab.Game) && rectBtnFolder.Contains(p);
+            bool newHoverRepair = (currentTab == LauncherTab.Game) && rectBtnRepair.Contains(p);
+            bool newHoverCheck = (currentTab == LauncherTab.Game) && rectBtnCheckUpdates.Contains(p);
+            bool newHoverUninstall = (currentTab == LauncherTab.Game) && rectBtnUninstall.Contains(p);
+            bool newHoverAutoClose = (currentTab == LauncherTab.Game) && rectAutoClose.Contains(p);
+            bool newHoverWeb = (currentTab == LauncherTab.Game) && rectLinkWeb.Contains(p);
+            bool newHoverGitHub = (currentTab == LauncherTab.Game) && rectLinkGitHub.Contains(p);
+            bool newHoverDiscord = (currentTab == LauncherTab.Game) && rectLinkDiscord.Contains(p);
+
+            // Controller Settings Tab Hovers
+            bool newHoverP50 = (currentTab == LauncherTab.ControllerSettings) && rectPreset50.Contains(p);
+            bool newHoverP75 = (currentTab == LauncherTab.ControllerSettings) && rectPreset75.Contains(p);
+            bool newHoverP100 = (currentTab == LauncherTab.ControllerSettings) && rectPreset100.Contains(p);
+            bool newHoverP150 = (currentTab == LauncherTab.ControllerSettings) && rectPreset150.Contains(p);
+            bool newHoverP200 = (currentTab == LauncherTab.ControllerSettings) && rectPreset200.Contains(p);
+            bool newHoverXbox = (currentTab == LauncherTab.ControllerSettings) && rectLayoutXbox.Contains(p);
+            bool newHoverSwitch = (currentTab == LauncherTab.ControllerSettings) && rectLayoutSwitch.Contains(p);
+            bool newHoverReset = (currentTab == LauncherTab.ControllerSettings) && rectBtnResetController.Contains(p);
+            bool newHoverSlider = (currentTab == LauncherTab.ControllerSettings) && rectSensSlider.Contains(p);
 
             bool needsRedraw = (newHoverMin != hoverBtnMinimize) ||
                                (newHoverClose != hoverBtnClose) ||
+                               (newHoverTabGame != hoverTabGame) ||
+                               (newHoverTabCtrl != hoverTabController) ||
                                (newHoverMain != hoverBtnMainAction) ||
                                (newHoverFolder != hoverBtnFolder) ||
                                (newHoverRepair != hoverBtnRepair) ||
@@ -1420,10 +1960,20 @@ namespace PokeBonk.Launcher
                                (newHoverAutoClose != hoverCheckAutoClose) ||
                                (newHoverWeb != hoverLinkWeb) ||
                                (newHoverGitHub != hoverLinkGitHub) ||
-                               (newHoverDiscord != hoverLinkDiscord);
+                               (newHoverDiscord != hoverLinkDiscord) ||
+                               (newHoverP50 != hoverPreset50) ||
+                               (newHoverP75 != hoverPreset75) ||
+                               (newHoverP100 != hoverPreset100) ||
+                               (newHoverP150 != hoverPreset150) ||
+                               (newHoverP200 != hoverPreset200) ||
+                               (newHoverXbox != hoverLayoutXbox) ||
+                               (newHoverSwitch != hoverLayoutSwitch) ||
+                               (newHoverReset != hoverBtnResetController);
 
             hoverBtnMinimize = newHoverMin;
             hoverBtnClose = newHoverClose;
+            hoverTabGame = newHoverTabGame;
+            hoverTabController = newHoverTabCtrl;
             hoverBtnMainAction = newHoverMain;
             hoverBtnFolder = newHoverFolder;
             hoverBtnRepair = newHoverRepair;
@@ -1433,10 +1983,21 @@ namespace PokeBonk.Launcher
             hoverLinkWeb = newHoverWeb;
             hoverLinkGitHub = newHoverGitHub;
             hoverLinkDiscord = newHoverDiscord;
+            hoverPreset50 = newHoverP50;
+            hoverPreset75 = newHoverP75;
+            hoverPreset100 = newHoverP100;
+            hoverPreset150 = newHoverP150;
+            hoverPreset200 = newHoverP200;
+            hoverLayoutXbox = newHoverXbox;
+            hoverLayoutSwitch = newHoverSwitch;
+            hoverBtnResetController = newHoverReset;
 
-            if (newHoverMin || newHoverClose || newHoverMain || newHoverFolder ||
-                newHoverRepair || newHoverCheck || newHoverUninstall || newHoverAutoClose ||
-                newHoverWeb || newHoverGitHub || newHoverDiscord)
+            if (newHoverMin || newHoverClose || newHoverTabGame || newHoverTabCtrl ||
+                newHoverMain || newHoverFolder || newHoverRepair || newHoverCheck ||
+                newHoverUninstall || newHoverAutoClose || newHoverWeb || newHoverGitHub ||
+                newHoverDiscord || newHoverP50 || newHoverP75 || newHoverP100 ||
+                newHoverP150 || newHoverP200 || newHoverXbox || newHoverSwitch ||
+                newHoverReset || newHoverSlider || isDraggingSensitivity)
             {
                 this.Cursor = Cursors.Hand;
             }
@@ -1451,11 +2012,24 @@ namespace PokeBonk.Launcher
             }
         }
 
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (isDraggingSensitivity)
+            {
+                isDraggingSensitivity = false;
+                SaveControllerSettings();
+                this.Invalidate();
+            }
+        }
+
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
             hoverBtnMinimize = false;
             hoverBtnClose = false;
+            hoverTabGame = false;
+            hoverTabController = false;
             hoverBtnMainAction = false;
             hoverBtnFolder = false;
             hoverBtnRepair = false;
@@ -1465,6 +2039,15 @@ namespace PokeBonk.Launcher
             hoverLinkWeb = false;
             hoverLinkGitHub = false;
             hoverLinkDiscord = false;
+            hoverPreset50 = false;
+            hoverPreset75 = false;
+            hoverPreset100 = false;
+            hoverPreset150 = false;
+            hoverPreset200 = false;
+            hoverLayoutXbox = false;
+            hoverLayoutSwitch = false;
+            hoverBtnResetController = false;
+            isDraggingSensitivity = false;
             this.Cursor = Cursors.Default;
             this.Invalidate();
         }

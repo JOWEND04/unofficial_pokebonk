@@ -110,6 +110,22 @@ def test_ui_and_strings_no_boxes_no_version(iteration):
     for btn in required_buttons:
         assert btn in src, f"Expected button text {btn} not found in Program.cs"
 
+    # 2b. Assert Controller Settings tab and components in launcher
+    required_controller_elements = [
+        '"CONTROLLER SETTINGS"',
+        '"STICK SENSITIVITY"',
+        '"BUTTON MAPPING LAYOUT"',
+        '"Standard (Xbox / PC)"',
+        '"Inverted (Nintendo Switch)"',
+        '"Reset Defaults"',
+        'DrawControllerSettingsTab',
+        'SaveControllerSettings',
+        'LoadControllerSettings',
+        'controller_settings.json'
+    ]
+    for elem in required_controller_elements:
+        assert elem in src, f"Expected controller element {elem} not found in Program.cs"
+
     # 3. Assert version number is completely removed from launcher UI
     # In DrawHeader:
     draw_header_match = re.search(r'DrawHeader\s*\(.*?\)\s*\{(.*?)(?=private void DrawHeroPanel)', src, re.DOTALL)
@@ -249,6 +265,20 @@ def test_file_lifecycle_atomic_swap_and_uninstall(iteration):
             f.write(b"MZ_REINSTALLED_GAME_EXE")
         os.rename(temp_exe, game_exe)
         assert os.path.exists(game_exe), "Reinstall failed to place game executable"
+
+        # Step 5: Test controller_settings.json lifecycle and schema
+        ctrl_json = os.path.join(test_dir, "controller_settings.json")
+        ctrl_data = {
+            "stick_sensitivity": 1.25,
+            "swap_abxy": True,
+            "updatedAt": "2026-10-22T02:00:00Z"
+        }
+        with open(ctrl_json, "w", encoding="utf-8") as f:
+            json.dump(ctrl_data, f, indent=2)
+        with open(ctrl_json, "r", encoding="utf-8") as f:
+            loaded_ctrl = json.load(f)
+        assert loaded_ctrl["stick_sensitivity"] == 1.25
+        assert loaded_ctrl["swap_abxy"] is True
 
         log(f"Pass {iteration} - File Lifecycle, Atomic Swap & Uninstall Simulation: VALID", "PASS")
     finally:
