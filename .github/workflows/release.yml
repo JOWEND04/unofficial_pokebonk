@@ -269,9 +269,9 @@ jobs:
           body: |
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
-            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support (v${{ env.VERSION_NAME }}, build ${{ env.VERSION_CODE }}).
-            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with download progress, file repair, and 1-click launch.
             * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
+            * **Android (`PokeBonk.apk`):** Direct APK install with native gamepad support and touch controls.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             PokeBonk.apk
@@ -304,32 +304,15 @@ jobs:
           npm install
           npm run dist
 
-      - name: Generate Auto-Updater Manifest (latest.yml)
+      - name: Generate Release Metadata (version.json)
         working-directory: ./windows
         shell: pwsh
         run: |
           $exePath = "dist/PokeBonk.exe"
           if (Test-Path $exePath) {
-            $size = (Get-Item $exePath).Length
-            $hash = (Get-FileHash $exePath -Algorithm SHA512).Hash
-            $hashBytes = [byte[]] -split ($hash -replace '..', '0x$& ')
-            $sha512 = [Convert]::ToBase64String($hashBytes)
             $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
             $pkg = Get-Content package.json | ConvertFrom-Json
             $ver = $pkg.version
-
-            $lines = @(
-              "version: $ver",
-              "files:",
-              "  - url: PokeBonk.exe",
-              "    sha512: $sha512",
-              "    size: $size",
-              "path: PokeBonk.exe",
-              "sha512: $sha512",
-              "releaseDate: '$date'"
-            )
-            $lines -join "`n" | Set-Content "dist/latest.yml" -Encoding UTF8
-            Write-Host "Successfully generated dist/latest.yml for v$ver"
             $androidVer = "1.0"
             $androidCode = 1
             if (Test-Path "../android/app/build.gradle.kts") {
@@ -345,6 +328,7 @@ jobs:
               timestamp = $date
             }
             $winVerObj | ConvertTo-Json | Set-Content "dist/version.json" -Encoding UTF8
+            Write-Host "Successfully generated dist/version.json for v$ver"
           } else {
             Write-Error "dist/PokeBonk.exe not found!"
           }
@@ -364,14 +348,13 @@ jobs:
           body: |
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
-            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with download progress, file repair, and 1-click launch.
             * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
-            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
+            * **Android (`PokeBonk.apk`):** Direct APK install with native gamepad support and touch controls.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             windows/dist/PokeBonk-Launcher.exe
             windows/dist/PokeBonk.exe
-            windows/dist/latest.yml
             windows/dist/version.json
           prerelease: false
           make_latest: true
@@ -427,9 +410,9 @@ jobs:
           body: |
             ### Latest Standalone PokéBonk Builds
             Download the latest versions under **Assets** below:
-            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with auto-updater, download progress, and 1-click launch.
+            * **Windows Launcher (`PokeBonk-Launcher.exe`):** Recommended dedicated Riot-style launcher with download progress, file repair, and 1-click launch.
             * **Windows Standalone (`PokeBonk.exe`):** Fast portable desktop client with native controller support and sensitivity settings.
-            * **Android (`PokeBonk.apk`):** Direct APK install with in-app updates, touch controls, and Bluetooth gamepad support.
+            * **Android (`PokeBonk.apk`):** Direct APK install with native gamepad support and touch controls.
             * **iOS (`PokeBonk.ipa`):** Sideloadable IPA for iPhone and iPad with native gamepad support (install via SideStore, AltStore, Sideloadly, or TrollStore).
           files: |
             PokeBonk.ipa

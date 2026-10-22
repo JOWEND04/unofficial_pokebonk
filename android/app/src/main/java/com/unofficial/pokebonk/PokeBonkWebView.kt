@@ -16,7 +16,7 @@ import android.webkit.WebViewClient
 import org.json.JSONObject
 
 @SuppressLint("SetJavaScriptEnabled")
-class PokeBonkWebView(context: Context, private val updateManager: UpdateManager) : WebView(context) {
+class PokeBonkWebView(context: Context) : WebView(context) {
 
     init {
         setBackgroundColor(Color.BLACK)
@@ -108,14 +108,19 @@ class PokeBonkWebView(context: Context, private val updateManager: UpdateManager
         @JavascriptInterface
         fun checkForUpdatesManual() {
             post {
-                updateManager.checkForUpdates(isUserInitiated = true)
+                openReleasePage()
             }
         }
 
         @JavascriptInterface
         fun openReleasePage() {
             post {
-                updateManager.openReleasePage()
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/JOWEND04/unofficial_pokebonk_app/releases/latest")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
             }
         }
 

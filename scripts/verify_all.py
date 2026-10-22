@@ -45,37 +45,33 @@ def test_android_integrity():
     assert 'android.permission.INTERNET' in manifest
     assert '.MainActivity' in manifest
     assert 'android:exported="true"' in manifest
-
-    with open('android/app/src/main/java/com/unofficial/pokebonk/UpdateManager.kt', 'r', encoding='utf-8') as f:
-        upd = f.read()
-    assert 'class UpdateManager' in upd
-    assert 'checkForUpdates' in upd
-    assert 'openReleasePage' in upd
-    assert 'openDirectApkDownload' in upd
+    assert 'REQUEST_INSTALL_PACKAGES' not in manifest, "Found obsolete REQUEST_INSTALL_PACKAGES relic"
+    assert not os.path.exists('android/app/src/main/java/com/unofficial/pokebonk/UpdateManager.kt'), "UpdateManager.kt should be removed"
 
     with open('android/app/src/main/java/com/unofficial/pokebonk/PokeBonkWebView.kt', 'r', encoding='utf-8') as f:
         wv = f.read()
     assert 'class PokeBonkWebView' in wv
-    assert 'checkForUpdatesManual' in wv
     assert 'openReleasePage' in wv
     assert 'getAppVersion' in wv
     print("[PASS] Android code integrity passed")
 
 def test_windows_integrity():
+    assert not os.path.exists('windows/app-update.yml'), "app-update.yml relic should be removed"
     with open('windows/package.json', 'r', encoding='utf-8') as f:
         pkg = json.load(f)
     assert pkg['name'] == 'pokebonk-windows'
     assert 'version' in pkg
     assert pkg['main'] == 'main.js'
+    assert 'electron-updater' not in pkg.get('dependencies', {}), "electron-updater relic should be removed"
 
     with open('windows/main.js', 'r', encoding='utf-8') as f:
         main_js = f.read()
     assert 'createMainWindow' in main_js
-    assert 'checkWindowsUpdates' in main_js
-    assert 'applyUpdateAndRestart' in main_js
     assert 'findLauncher' in main_js
     assert 'toggle-fullscreen' in main_js
     assert 'check-for-updates-manual' in main_js
+    assert 'checkWindowsUpdates' not in main_js, "checkWindowsUpdates relic should be removed"
+    assert 'applyUpdateAndRestart' not in main_js, "applyUpdateAndRestart relic should be removed"
 
     with open('windows/preload.js', 'r', encoding='utf-8') as f:
         preload_js = f.read()

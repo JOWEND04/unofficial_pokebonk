@@ -2,8 +2,6 @@ package com.unofficial.pokebonk
 
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -18,8 +16,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 class MainActivity : ComponentActivity() {
 
     private lateinit var webView: PokeBonkWebView
-    private lateinit var updateManager: UpdateManager
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var lastBackPressTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,8 +32,7 @@ class MainActivity : ComponentActivity() {
 
         enableImmersiveFullscreen()
 
-        updateManager = UpdateManager(this)
-        webView = PokeBonkWebView(this, updateManager)
+        webView = PokeBonkWebView(this)
 
         val root = FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
@@ -66,13 +61,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         })
-
-        // Check for updates in background after 5s
-        mainHandler.postDelayed({
-            if (!isFinishing && !isDestroyed) {
-                updateManager.checkForUpdates(isUserInitiated = false)
-            }
-        }, 5000)
     }
 
     private fun sendEscapeKeyToGame() {

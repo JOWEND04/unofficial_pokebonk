@@ -19,25 +19,10 @@
     },
     "portable": {
       "artifactName": "PokeBonk.exe"
-    },
-    "extraResources": [
-      {
-        "from": "app-update.yml",
-        "to": "app-update.yml"
-      }
-    ],
-    "publish": {
-      "provider": "github",
-      "owner": "JOWEND04",
-      "repo": "unofficial_pokebonk_app",
-      "releaseType": "release"
     }
   },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
-  },
-  "dependencies": {
-    "electron-updater": "^6.3.9"
   }
 }
