@@ -245,7 +245,7 @@ namespace PokeBonk.Launcher
                         if (File.Exists(gameExePath))
                         {
                             currentState = LauncherState.Ready;
-                            statusMessage = string.Format("PokéBonk is up to date (v{0})", localVersion ?? launcherVersion);
+                            statusMessage = "PokéBonk is up to date";
                         }
                         else
                         {
@@ -430,19 +430,17 @@ namespace PokeBonk.Launcher
                 else if (!File.Exists(gameExePath))
                 {
                     currentState = LauncherState.NotInstalled;
-                    statusMessage = remoteVersion != null
-                        ? string.Format("PokéBonk v{0} available to install", remoteVersion)
-                        : "PokéBonk is ready to install";
+                    statusMessage = "PokéBonk is ready to install";
                 }
                 else if (!string.IsNullOrEmpty(remoteVersion) && CompareVersions(remoteVersion, localVersion) > 0)
                 {
                     currentState = LauncherState.UpdateAvailable;
-                    statusMessage = string.Format("Update Available: v{0} (Installed: v{1})", remoteVersion, localVersion);
+                    statusMessage = "A new game update is available";
                 }
                 else
                 {
                     currentState = LauncherState.Ready;
-                    statusMessage = string.Format("PokéBonk is up to date (v{0})", localVersion ?? launcherVersion);
+                    statusMessage = "PokéBonk is up to date";
                 }
 
                 this.Invalidate();
@@ -679,14 +677,14 @@ namespace PokeBonk.Launcher
 
                             if (launchAfter)
                             {
-                                statusMessage = string.Format("PokéBonk v{0} installed! Launching game…", targetVersion);
+                                statusMessage = "PokéBonk installed! Launching game…";
                                 this.Invalidate();
                                 LaunchGame();
                             }
                             else
                             {
                                 currentState = LauncherState.Ready;
-                                statusMessage = string.Format("PokéBonk v{0} is ready to play!", targetVersion);
+                                statusMessage = "PokéBonk is ready to play!";
                                 this.Invalidate();
                             }
                         }
@@ -888,13 +886,6 @@ namespace PokeBonk.Launcher
                 g.DrawString("LAUNCHER", font, brush, rectBadge, sf);
             }
 
-            // Discreet Version Tag in Top-Left (as requested: non-imposing, clean slate)
-            using (var font = new Font("Segoe UI", 9.0f, FontStyle.Regular))
-            using (var brush = new SolidBrush(ColorTextMuted))
-            {
-                g.DrawString("v" + launcherVersion, font, brush, 230, 14);
-            }
-
             // Minimize Button
             if (hoverBtnMinimize)
             {
@@ -987,25 +978,25 @@ namespace PokeBonk.Launcher
                 g.DrawString("Game Status: " + dotLabel, font, brush, 74, 243);
             }
 
-            // Version info rows
+            // Info rows
             using (var font = new Font("Segoe UI", 9.5f, FontStyle.Regular))
             using (var fontBold = new Font("Segoe UI", 9.5f, FontStyle.Bold))
             using (var brushMuted = new SolidBrush(ColorTextMuted))
             using (var brushWhite = new SolidBrush(ColorTextWhite))
             {
-                g.DrawString("Installed Version:", font, brushMuted, 56, 280);
-                g.DrawString(localVersion != null ? "v" + localVersion : "None (Not Installed)", fontBold, brushWhite, 180, 280);
+                g.DrawString("Client:", font, brushMuted, 56, 280);
+                g.DrawString("Desktop 64-bit Edition", fontBold, brushWhite, 180, 280);
 
-                g.DrawString("Latest Release:", font, brushMuted, 56, 310);
-                g.DrawString(remoteVersion != null ? "v" + remoteVersion : "Connecting…", fontBold, brushWhite, 180, 310);
-
-                g.DrawString("Install Location:", font, brushMuted, 56, 340);
+                g.DrawString("Install Location:", font, brushMuted, 56, 310);
                 string displayPath = gameExePath;
                 if (displayPath.Length > 38) displayPath = "…" + displayPath.Substring(displayPath.Length - 37);
-                g.DrawString(displayPath, font, brushMuted, 180, 340);
+                g.DrawString(displayPath, font, brushMuted, 180, 310);
 
-                g.DrawString("Engine:", font, brushMuted, 56, 370);
-                g.DrawString("Chromium D3D11 / Native Gamepad / Low Latency", font, brushWhite, 180, 370);
+                g.DrawString("Graphics Engine:", font, brushMuted, 56, 340);
+                g.DrawString("Chromium D3D11 / Hardware Accelerated", font, brushWhite, 180, 340);
+
+                g.DrawString("Controller Input:", font, brushMuted, 56, 370);
+                g.DrawString("Xbox / PlayStation / Switch Pro / DirectInput", font, brushWhite, 180, 370);
             }
 
             // Quick Links at Bottom (Clean text, no emoji boxes)

@@ -9,8 +9,7 @@ The PokéBonk Dedicated Launcher is a native, ultra-lightweight Windows desktop 
 1. **Riot Client Gaming Experience:**
    - Deep slate theme (`#1a1630`) with authentic Poké Red (`#e94756`) accents and white/slate text.
    - Zero frosted gold styling.
-   - Frameless, smooth-dragging window with custom minimize and close controls.
-   - Discreet, non-imposing version tag in the top-left (`v2.4.15`).
+   - Clean header bar with custom minimize and close controls.
    - High-DPI Per-Monitor V2 awareness for razor-sharp rendering on 4K, 1440p, and 1080p displays.
 
 2. **Zero-Lock Auto-Updater:**
