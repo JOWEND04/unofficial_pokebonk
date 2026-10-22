@@ -29,17 +29,20 @@ namespace PokeBonk.Launcher
 
     public class LauncherForm : Form
     {
-        // P/Invoke for borderless window dragging and shadow
+        // P/Invoke for borderless window dragging, shadow, and window activation
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
         [DllImport("user32.dll")]
         public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         private const int WM_NCLBUTTONDOWN = 0xA1;
         private const int HT_CAPTION = 0x2;
         private const int CS_DROPSHADOW = 0x00020000;
+        private const int SW_RESTORE = 9;
 
         // Theme Palette (Authentic PokéBonk palette: Deep Slate, Poké Red, White)
         private static readonly Color ColorBg = ColorTranslator.FromHtml("#1a1630");
@@ -51,6 +54,8 @@ namespace PokeBonk.Launcher
         private static readonly Color ColorRedActive = ColorTranslator.FromHtml("#d63b4a");
         private static readonly Color ColorButtonSec = ColorTranslator.FromHtml("#2d274c");
         private static readonly Color ColorButtonSecHover = ColorTranslator.FromHtml("#3b3363");
+        private static readonly Color ColorButtonDanger = ColorTranslator.FromHtml("#3d1b28");
+        private static readonly Color ColorButtonDangerHover = ColorTranslator.FromHtml("#591e32");
         private static readonly Color ColorTextWhite = Color.White;
         private static readonly Color ColorTextMuted = ColorTranslator.FromHtml("#94a3b8");
         private static readonly Color ColorSuccess = ColorTranslator.FromHtml("#22c55e");
@@ -78,7 +83,7 @@ namespace PokeBonk.Launcher
         private DateTime lastSpeedCalcTime = DateTime.MinValue;
         private long lastSpeedBytes = 0;
         private WebClient activeWebClient = null;
-        private Process gameProcess = null;
+        private System.Windows.Forms.Timer gameMonitorTimer = null;
         private bool autoCloseOnPlay = false;
 
         // Hover states for custom interactive elements
@@ -88,6 +93,7 @@ namespace PokeBonk.Launcher
         private bool hoverBtnFolder = false;
         private bool hoverBtnRepair = false;
         private bool hoverBtnCheckUpdates = false;
+        private bool hoverBtnUninstall = false;
         private bool hoverLinkWeb = false;
         private bool hoverLinkGitHub = false;
         private bool hoverLinkDiscord = false;
@@ -97,14 +103,15 @@ namespace PokeBonk.Launcher
         private readonly Rectangle rectTitleBar = new Rectangle(0, 0, 920, 44);
         private readonly Rectangle rectBtnMinimize = new Rectangle(920 - 76, 7, 32, 30);
         private readonly Rectangle rectBtnClose = new Rectangle(920 - 40, 7, 32, 30);
-        private readonly Rectangle rectMainAction = new Rectangle(585, 290, 295, 62);
-        private readonly Rectangle rectBtnFolder = new Rectangle(585, 372, 142, 36);
-        private readonly Rectangle rectBtnRepair = new Rectangle(738, 372, 142, 36);
-        private readonly Rectangle rectBtnCheckUpdates = new Rectangle(585, 420, 295, 36);
-        private readonly Rectangle rectAutoClose = new Rectangle(585, 474, 295, 24);
-        private readonly Rectangle rectLinkWeb = new Rectangle(40, 480, 140, 26);
-        private readonly Rectangle rectLinkGitHub = new Rectangle(190, 480, 140, 26);
-        private readonly Rectangle rectLinkDiscord = new Rectangle(340, 480, 150, 26);
+        private readonly Rectangle rectMainAction = new Rectangle(585, 248, 295, 60);
+        private readonly Rectangle rectBtnFolder = new Rectangle(585, 324, 142, 36);
+        private readonly Rectangle rectBtnRepair = new Rectangle(738, 324, 142, 36);
+        private readonly Rectangle rectBtnCheckUpdates = new Rectangle(585, 370, 142, 36);
+        private readonly Rectangle rectBtnUninstall = new Rectangle(738, 370, 142, 36);
+        private readonly Rectangle rectAutoClose = new Rectangle(585, 424, 295, 24);
+        private readonly Rectangle rectLinkWeb = new Rectangle(36, 480, 120, 26);
+        private readonly Rectangle rectLinkGitHub = new Rectangle(170, 480, 130, 26);
+        private readonly Rectangle rectLinkDiscord = new Rectangle(315, 480, 150, 26);
 
         public LauncherForm()
         {
@@ -150,6 +157,7 @@ namespace PokeBonk.Launcher
 
             this.Load += (s, e) =>
             {
+                StartGameMonitor();
                 Task.Factory.StartNew(() => InitializeAsync());
             };
         }
@@ -209,6 +217,46 @@ namespace PokeBonk.Launcher
                 File.WriteAllText(settingsJsonPath, serializer.Serialize(dict));
             }
             catch {}
+        }
+
+        private void StartGameMonitor()
+        {
+            if (gameMonitorTimer == null)
+            {
+                gameMonitorTimer = new System.Windows.Forms.Timer();
+                gameMonitorTimer.Interval = 1200;
+                gameMonitorTimer.Tick += (s, e) =>
+                {
+                    if (currentState == LauncherState.Downloading || currentState == LauncherState.Extracting)
+                    {
+                        return;
+                    }
+
+                    bool running = IsGameRunning();
+                    if (running && currentState != LauncherState.Playing)
+                    {
+                        currentState = LauncherState.Playing;
+                        statusMessage = "PokéBonk is currently running";
+                        this.Invalidate();
+                    }
+                    else if (!running && currentState == LauncherState.Playing)
+                    {
+                        CheckLocalInstalledGame();
+                        if (File.Exists(gameExePath))
+                        {
+                            currentState = LauncherState.Ready;
+                            statusMessage = string.Format("PokéBonk is up to date (v{0})", localVersion ?? launcherVersion);
+                        }
+                        else
+                        {
+                            currentState = LauncherState.NotInstalled;
+                            statusMessage = "PokéBonk is ready to install";
+                        }
+                        this.Invalidate();
+                    }
+                };
+            }
+            gameMonitorTimer.Start();
         }
 
         private async Task InitializeAsync()
@@ -280,9 +328,12 @@ namespace PokeBonk.Launcher
 
         private async Task CheckForUpdatesAsync()
         {
-            currentState = LauncherState.Checking;
-            statusMessage = "Checking for updates from GitHub…";
-            this.BeginInvoke(new Action(() => this.Invalidate()));
+            if (currentState != LauncherState.Downloading && currentState != LauncherState.Extracting && currentState != LauncherState.Playing)
+            {
+                currentState = LauncherState.Checking;
+                statusMessage = "Checking for updates from GitHub…";
+                this.BeginInvoke(new Action(() => this.Invalidate()));
+            }
 
             await Task.Run(() =>
             {
@@ -423,36 +474,75 @@ namespace PokeBonk.Launcher
         {
             try
             {
-                Process[] procs = Process.GetProcessesByName("PokeBonk");
                 int myPid = Process.GetCurrentProcess().Id;
-                foreach (var p in procs)
+                foreach (var p in Process.GetProcessesByName("PokeBonk"))
                 {
-                    if (p.Id != myPid) return true;
+                    if (p.Id != myPid)
+                    {
+                        try
+                        {
+                            if (!p.HasExited) return true;
+                        }
+                        catch {}
+                    }
                 }
             }
             catch {}
             return false;
         }
 
-        private void FocusGameWindow()
+        private void KillOrphanedGameProcesses()
         {
             try
             {
-                Process[] procs = Process.GetProcessesByName("PokeBonk");
                 int myPid = Process.GetCurrentProcess().Id;
-                foreach (var p in procs)
+                foreach (var p in Process.GetProcessesByName("PokeBonk"))
                 {
-                    if (p.Id != myPid && p.MainWindowHandle != IntPtr.Zero)
+                    if (p.Id != myPid && p.MainWindowHandle == IntPtr.Zero)
                     {
-                        SetForegroundWindow(p.MainWindowHandle);
-                        break;
+                        try { p.Kill(); } catch {}
                     }
                 }
             }
             catch {}
         }
 
-        private void StartDownload()
+        private void KillAllGameProcesses()
+        {
+            try
+            {
+                int myPid = Process.GetCurrentProcess().Id;
+                foreach (var p in Process.GetProcessesByName("PokeBonk"))
+                {
+                    if (p.Id != myPid)
+                    {
+                        try { p.Kill(); } catch {}
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private bool FocusGameWindow()
+        {
+            try
+            {
+                int myPid = Process.GetCurrentProcess().Id;
+                foreach (var p in Process.GetProcessesByName("PokeBonk"))
+                {
+                    if (p.Id != myPid && p.MainWindowHandle != IntPtr.Zero)
+                    {
+                        ShowWindow(p.MainWindowHandle, SW_RESTORE);
+                        SetForegroundWindow(p.MainWindowHandle);
+                        return true;
+                    }
+                }
+            }
+            catch {}
+            return false;
+        }
+
+        private void StartDownload(bool launchAfter = true)
         {
             if (currentState == LauncherState.Downloading) return;
 
@@ -467,16 +557,7 @@ namespace PokeBonk.Launcher
                 );
                 if (res == DialogResult.Yes)
                 {
-                    try
-                    {
-                        Process[] procs = Process.GetProcessesByName("PokeBonk");
-                        int myPid = Process.GetCurrentProcess().Id;
-                        foreach (var p in procs)
-                        {
-                            if (p.Id != myPid) p.Kill();
-                        }
-                    }
-                    catch {}
+                    KillAllGameProcesses();
                 }
                 else
                 {
@@ -569,7 +650,7 @@ namespace PokeBonk.Launcher
                         {
                             currentState = LauncherState.Extracting;
                             statusMessage = "Installing game files…";
-                            downloadDetail = "Verifying binary integrity…";
+                            downloadDetail = "Finalizing installation…";
                             this.Invalidate();
 
                             // Safe atomic swap
@@ -594,10 +675,20 @@ namespace PokeBonk.Launcher
                             File.WriteAllText(versionJsonPath, serializer.Serialize(verData));
 
                             localVersion = targetVersion;
-                            currentState = LauncherState.Ready;
-                            statusMessage = string.Format("PokéBonk v{0} is installed and ready to play!", targetVersion);
                             downloadDetail = "";
-                            this.Invalidate();
+
+                            if (launchAfter)
+                            {
+                                statusMessage = string.Format("PokéBonk v{0} installed! Launching game…", targetVersion);
+                                this.Invalidate();
+                                LaunchGame();
+                            }
+                            else
+                            {
+                                currentState = LauncherState.Ready;
+                                statusMessage = string.Format("PokéBonk v{0} is ready to play!", targetVersion);
+                                this.Invalidate();
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -622,15 +713,21 @@ namespace PokeBonk.Launcher
         {
             if (!File.Exists(gameExePath))
             {
-                StartDownload();
+                StartDownload(true);
                 return;
             }
 
-            if (IsGameRunning())
+            // If game is already running with an active window, bring it to front
+            if (FocusGameWindow())
             {
-                FocusGameWindow();
+                currentState = LauncherState.Playing;
+                statusMessage = "PokéBonk is currently running";
+                this.Invalidate();
                 return;
             }
+
+            // Clean up any stale headless processes before launching fresh
+            KillOrphanedGameProcesses();
 
             try
             {
@@ -641,9 +738,9 @@ namespace PokeBonk.Launcher
                     UseShellExecute = true
                 };
 
-                gameProcess = Process.Start(startInfo);
+                Process.Start(startInfo);
                 currentState = LauncherState.Playing;
-                statusMessage = "PokéBonk is currently running";
+                statusMessage = "Launching PokéBonk…";
                 this.Invalidate();
 
                 if (autoCloseOnPlay)
@@ -651,26 +748,71 @@ namespace PokeBonk.Launcher
                     this.Close();
                     return;
                 }
-
-                if (gameProcess != null)
-                {
-                    gameProcess.EnableRaisingEvents = true;
-                    gameProcess.Exited += (s, e) =>
-                    {
-                        this.BeginInvoke(new Action(() =>
-                        {
-                            currentState = LauncherState.Ready;
-                            statusMessage = string.Format("PokéBonk is up to date (v{0})", localVersion ?? launcherVersion);
-                            this.Invalidate();
-                        }));
-                    };
-                }
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Failed to launch PokéBonk: " + ex.Message, "Launch Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 currentState = LauncherState.Ready;
                 this.Invalidate();
+            }
+        }
+
+        private void UninstallGame()
+        {
+            if (!File.Exists(gameExePath) && !Directory.Exists(gameDir))
+            {
+                MessageBox.Show("PokéBonk is not currently installed.", "Not Installed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                "Are you sure you want to uninstall PokéBonk?\n\nThis will remove all downloaded game files from your computer.",
+                "Uninstall PokéBonk",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                // Kill running processes first
+                KillAllGameProcesses();
+
+                // Delete game directory files
+                if (Directory.Exists(gameDir))
+                {
+                    try
+                    {
+                        Directory.Delete(gameDir, true);
+                    }
+                    catch
+                    {
+                        foreach (string file in Directory.GetFiles(gameDir))
+                        {
+                            try { File.Delete(file); } catch {}
+                        }
+                    }
+                }
+
+                // Re-create clean empty directory
+                if (!Directory.Exists(gameDir)) Directory.CreateDirectory(gameDir);
+
+                localVersion = null;
+                currentState = LauncherState.NotInstalled;
+                statusMessage = "PokéBonk was successfully uninstalled.";
+                this.Invalidate();
+
+                MessageBox.Show(
+                    "PokéBonk has been successfully uninstalled.\n\nYou can reinstall it at any time by clicking 'INSTALL GAME'.",
+                    "Uninstall Complete",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error during uninstall: " + ex.Message, "Uninstall Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -810,10 +952,10 @@ namespace PokeBonk.Launcher
                 g.DrawString("Real-Time Pokémon Action Battle Arena", font, brush, 36, 142);
             }
 
-            // Feature Badges (3 horizontal tags)
-            DrawFeaturePill(g, 36, 180, "🎮 Controller Ready");
-            DrawFeaturePill(g, 186, 180, "⚡ 60 FPS Uncapped");
-            DrawFeaturePill(g, 336, 180, "🔒 GPU Accelerated");
+            // Feature Badges (Clean text, no emoji boxes)
+            DrawFeaturePill(g, 36, 180, "Controller Ready");
+            DrawFeaturePill(g, 186, 180, "60 FPS Uncapped");
+            DrawFeaturePill(g, 336, 180, "GPU Accelerated");
 
             // Game Overview & Highlights Card
             var rectCard = new Rectangle(36, 226, 470, 230);
@@ -866,10 +1008,10 @@ namespace PokeBonk.Launcher
                 g.DrawString("Chromium D3D11 / Native Gamepad / Low Latency", font, brushWhite, 180, 370);
             }
 
-            // Quick Links at Bottom
-            DrawQuickLink(g, rectLinkWeb, "🌐  pokebonk.com", hoverLinkWeb);
-            DrawQuickLink(g, rectLinkGitHub, "📦  GitHub Releases", hoverLinkGitHub);
-            DrawQuickLink(g, rectLinkDiscord, "💬  Community Discord", hoverLinkDiscord);
+            // Quick Links at Bottom (Clean text, no emoji boxes)
+            DrawQuickLink(g, rectLinkWeb, "pokebonk.com", hoverLinkWeb);
+            DrawQuickLink(g, rectLinkGitHub, "GitHub Releases", hoverLinkGitHub);
+            DrawQuickLink(g, rectLinkDiscord, "Community Discord", hoverLinkDiscord);
         }
 
         private void DrawActionDock(Graphics g)
@@ -892,7 +1034,7 @@ namespace PokeBonk.Launcher
             }
 
             // Description / Status Banner
-            var rectStatusBox = new Rectangle(585, 115, 295, 75);
+            var rectStatusBox = new Rectangle(585, 115, 295, 68);
             using (var path = GetRoundedRectangle(rectStatusBox, 6))
             using (var brush = new SolidBrush(Color.FromArgb(20, 0, 0, 0)))
             using (var pen = new Pen(ColorCardBorder, 1))
@@ -911,7 +1053,7 @@ namespace PokeBonk.Launcher
             // Progress Bar Section (Visible during downloading / installing)
             if (currentState == LauncherState.Downloading || currentState == LauncherState.Extracting)
             {
-                var rectProgressTrack = new Rectangle(585, 210, 295, 10);
+                var rectProgressTrack = new Rectangle(585, 195, 295, 10);
                 using (var path = GetRoundedRectangle(rectProgressTrack, 5))
                 using (var brush = new SolidBrush(Color.FromArgb(40, 255, 255, 255)))
                 {
@@ -919,7 +1061,7 @@ namespace PokeBonk.Launcher
                 }
 
                 int fillWidth = Math.Max(10, (int)(295 * (downloadPercent / 100.0)));
-                var rectProgressFill = new Rectangle(585, 210, fillWidth, 10);
+                var rectProgressFill = new Rectangle(585, 195, fillWidth, 10);
                 using (var path = GetRoundedRectangle(rectProgressFill, 5))
                 using (var brush = new LinearGradientBrush(rectProgressFill, ColorRed, ColorRedHover, 0f))
                 {
@@ -931,22 +1073,22 @@ namespace PokeBonk.Launcher
                 using (var brush = new SolidBrush(ColorTranslator.FromHtml("#cbd5e1")))
                 {
                     var sf = new StringFormat { Alignment = StringAlignment.Center };
-                    g.DrawString(downloadDetail, font, brush, new Rectangle(585, 230, 295, 30), sf);
+                    g.DrawString(downloadDetail, font, brush, new Rectangle(585, 212, 295, 28), sf);
                 }
             }
 
-            // ================= PRIMARY ACTION BUTTON (Riot Client Style) =================
-            string actionText = "▶  PLAY";
+            // ================= PRIMARY ACTION BUTTON (Riot Client Style, Clean Text) =================
+            string actionText = "PLAY";
             Color btnColor = ColorRed;
             if (hoverBtnMainAction) btnColor = ColorRedHover;
 
             if (currentState == LauncherState.NotInstalled)
             {
-                actionText = "⬇  INSTALL GAME";
+                actionText = "INSTALL GAME";
             }
             else if (currentState == LauncherState.UpdateAvailable)
             {
-                actionText = "🔄  UPDATE GAME";
+                actionText = "UPDATE GAME";
             }
             else if (currentState == LauncherState.Downloading)
             {
@@ -960,7 +1102,7 @@ namespace PokeBonk.Launcher
             }
             else if (currentState == LauncherState.Playing)
             {
-                actionText = "●  GAME RUNNING";
+                actionText = "GAME RUNNING";
                 btnColor = ColorSuccess;
             }
             else if (currentState == LauncherState.Checking)
@@ -982,10 +1124,14 @@ namespace PokeBonk.Launcher
                 g.DrawString(actionText, font, brush, rectMainAction, sf);
             }
 
-            // ================= UTILITY BUTTONS =================
-            DrawSecondaryButton(g, rectBtnFolder, "📁  Open Folder", hoverBtnFolder);
-            DrawSecondaryButton(g, rectBtnRepair, "⚙  Repair Files", hoverBtnRepair);
-            DrawSecondaryButton(g, rectBtnCheckUpdates, "🔄  Check for Updates", hoverBtnCheckUpdates);
+            // ================= UTILITY BUTTONS (Zero Emojis - Crisp Text) =================
+            DrawSecondaryButton(g, rectBtnFolder, "Open Folder", hoverBtnFolder);
+            DrawSecondaryButton(g, rectBtnRepair, "Repair Files", hoverBtnRepair);
+            DrawSecondaryButton(g, rectBtnCheckUpdates, "Check Updates", hoverBtnCheckUpdates);
+            
+            // Dedicated Uninstall Button
+            bool canUninstall = File.Exists(gameExePath);
+            DrawDangerButton(g, rectBtnUninstall, "Uninstall", hoverBtnUninstall, canUninstall);
 
             // ================= AUTO-CLOSE CHECKBOX =================
             var rectBox = new Rectangle(rectAutoClose.X, rectAutoClose.Y + 3, 16, 16);
@@ -1051,6 +1197,27 @@ namespace PokeBonk.Launcher
             }
             using (var font = new Font("Segoe UI", 9.0f, FontStyle.Regular))
             using (var brush = new SolidBrush(ColorTextWhite))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(text, font, brush, rect, sf);
+            }
+        }
+
+        private void DrawDangerButton(Graphics g, Rectangle rect, string text, bool isHover, bool isEnabled)
+        {
+            Color bg = !isEnabled ? Color.FromArgb(20, 255, 255, 255) : (isHover ? ColorButtonDangerHover : ColorButtonDanger);
+            Color border = !isEnabled ? ColorCardBorder : (isHover ? ColorRed : Color.FromArgb(60, ColorRed));
+            Color textColor = !isEnabled ? ColorTextMuted : (isHover ? ColorTextWhite : ColorTranslator.FromHtml("#f87171"));
+
+            using (var path = GetRoundedRectangle(rect, 5))
+            using (var brush = new SolidBrush(bg))
+            using (var pen = new Pen(border, 1))
+            {
+                g.FillPath(brush, path);
+                g.DrawPath(pen, path);
+            }
+            using (var font = new Font("Segoe UI", 9.0f, FontStyle.Regular))
+            using (var brush = new SolidBrush(textColor))
             {
                 var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString(text, font, brush, rect, sf);
@@ -1161,7 +1328,7 @@ namespace PokeBonk.Launcher
                 }
                 else if (currentState == LauncherState.NotInstalled || currentState == LauncherState.UpdateAvailable || currentState == LauncherState.Error)
                 {
-                    StartDownload();
+                    StartDownload(true);
                 }
                 return;
             }
@@ -1189,7 +1356,7 @@ namespace PokeBonk.Launcher
                 );
                 if (choice == DialogResult.Yes)
                 {
-                    StartDownload();
+                    StartDownload(true);
                 }
                 return;
             }
@@ -1198,6 +1365,13 @@ namespace PokeBonk.Launcher
             if (e.Button == MouseButtons.Left && rectBtnCheckUpdates.Contains(e.Location))
             {
                 Task.Factory.StartNew(() => CheckForUpdatesAsync());
+                return;
+            }
+
+            // Uninstall Game
+            if (e.Button == MouseButtons.Left && rectBtnUninstall.Contains(e.Location))
+            {
+                UninstallGame();
                 return;
             }
 
@@ -1239,6 +1413,7 @@ namespace PokeBonk.Launcher
             bool newHoverFolder = rectBtnFolder.Contains(p);
             bool newHoverRepair = rectBtnRepair.Contains(p);
             bool newHoverCheck = rectBtnCheckUpdates.Contains(p);
+            bool newHoverUninstall = rectBtnUninstall.Contains(p);
             bool newHoverAutoClose = rectAutoClose.Contains(p);
             bool newHoverWeb = rectLinkWeb.Contains(p);
             bool newHoverGitHub = rectLinkGitHub.Contains(p);
@@ -1250,6 +1425,7 @@ namespace PokeBonk.Launcher
                                (newHoverFolder != hoverBtnFolder) ||
                                (newHoverRepair != hoverBtnRepair) ||
                                (newHoverCheck != hoverBtnCheckUpdates) ||
+                               (newHoverUninstall != hoverBtnUninstall) ||
                                (newHoverAutoClose != hoverCheckAutoClose) ||
                                (newHoverWeb != hoverLinkWeb) ||
                                (newHoverGitHub != hoverLinkGitHub) ||
@@ -1261,13 +1437,14 @@ namespace PokeBonk.Launcher
             hoverBtnFolder = newHoverFolder;
             hoverBtnRepair = newHoverRepair;
             hoverBtnCheckUpdates = newHoverCheck;
+            hoverBtnUninstall = newHoverUninstall;
             hoverCheckAutoClose = newHoverAutoClose;
             hoverLinkWeb = newHoverWeb;
             hoverLinkGitHub = newHoverGitHub;
             hoverLinkDiscord = newHoverDiscord;
 
             if (newHoverMin || newHoverClose || newHoverMain || newHoverFolder ||
-                newHoverRepair || newHoverCheck || newHoverAutoClose ||
+                newHoverRepair || newHoverCheck || newHoverUninstall || newHoverAutoClose ||
                 newHoverWeb || newHoverGitHub || newHoverDiscord)
             {
                 this.Cursor = Cursors.Hand;
@@ -1292,6 +1469,7 @@ namespace PokeBonk.Launcher
             hoverBtnFolder = false;
             hoverBtnRepair = false;
             hoverBtnCheckUpdates = false;
+            hoverBtnUninstall = false;
             hoverCheckAutoClose = false;
             hoverLinkWeb = false;
             hoverLinkGitHub = false;

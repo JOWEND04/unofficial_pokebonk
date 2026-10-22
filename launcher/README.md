@@ -25,13 +25,15 @@ The PokéBonk Dedicated Launcher is a native, ultra-lightweight Windows desktop 
    - Visual gradient progress bar during installation and updates.
 
 4. **One-Click Play & Utilities:**
-   - **`▶ PLAY`**: Launches the standalone game client directly.
-   - **`⬇ INSTALL GAME`**: Installs the game client if not already downloaded.
-   - **`🔄 UPDATE GAME`**: Automatically detected when a newer release is published on GitHub.
-   - **`● GAME RUNNING`**: Tracks active game status and brings the game window to focus when clicked.
-   - **`📁 Open Folder`**: Opens `%LOCALAPPDATA%\PokeBonk\game` in Windows File Explorer.
-   - **`⚙ Repair Files`**: Verifies and re-downloads a clean copy of the game binary.
+   - **`PLAY`**: Launches the standalone game client directly.
+   - **`INSTALL GAME`**: Downloads and automatically launches the game upon installation.
+   - **`UPDATE GAME`**: Automatically detected when a newer release is published on GitHub.
+   - **`GAME RUNNING`**: Tracks active game status and brings the game window to focus when clicked.
+   - **`Open Folder`**: Opens `%LOCALAPPDATA%\PokeBonk\game` in Windows File Explorer.
+   - **`Repair Files`**: Verifies and re-downloads a clean copy of the game binary.
+   - **`Uninstall`**: Fully removes installed game files from `%LOCALAPPDATA%\PokeBonk\game` with confirmation.
    - **`Close launcher when game launches`**: Optional toggle to exit the launcher upon starting the game.
+   - **Clean Typography**: Uses crisp native fonts with zero missing unicode emoji boxes.
 
 ---
 

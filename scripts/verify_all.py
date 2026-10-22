@@ -175,6 +175,9 @@ def test_launcher_integrity():
     assert 'class LauncherForm' in src
     assert 'StartDownload' in src
     assert 'LaunchGame' in src
+    assert 'UninstallGame' in src
+    assert 'KillOrphanedGameProcesses' in src
+    assert 'StartGameMonitor' in src
     assert 'CheckForUpdatesAsync' in src
     assert '#1a1630' in src
     assert '#e94756' in src

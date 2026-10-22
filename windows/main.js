@@ -521,6 +521,13 @@ function createMainWindow() {
     }
   });
 
+  // Safety fallback: guarantee window is displayed even if network or dom-ready is delayed
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 1200);
+
   // Inject Core Styles and Script on dom-ready to guarantee 100% presence
   mainWindow.webContents.on('dom-ready', () => {
     try {
